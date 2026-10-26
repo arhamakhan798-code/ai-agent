@@ -1,0 +1,9 @@
+flask
+flask-cors
+gspread
+google-auth
+google-auth-oauthlib
+google-api-python-client
+google-generativeai
+chromadb
+gunicorn

@@ -1,0 +1,2349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TechMart AI — Concierge & Store Assistant</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600;1,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ── RESET ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* ── NORMAL FONT FOR NUMBERS (0-9, $, %) VIA UNICODE-RANGE ── */
+@font-face {
+  font-family: 'NormalNumbers';
+  src: local('Inter'), local('Segoe UI'), local('Arial'), sans-serif;
+  unicode-range: U+0030-0039, U+0024, U+0025; /* Digits 0-9, $, % */
+}
+
+:root {
+  --font-serif: 'NormalNumbers', 'Cormorant Garamond', Garamond, 'Times New Roman', serif;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --transition-smooth: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ── DARK THEME (HIGH CONTRAST) ── */
+body.tm-dark {
+  --bg-main: #090a0d;
+  --bg-surface: #111317;
+  --bg-card: rgba(22, 25, 30, 0.85);
+  --border-subtle: rgba(201, 169, 110, 0.2);
+  --border-focus: #c9a96e;
+  --text-main: #f9fafb;
+  --text-muted: #a1a1aa;
+  --user-bubble: #1e232a;
+  --user-border: rgba(201, 169, 110, 0.22);
+  --agent-bubble: #13161a;
+  --agent-border: rgba(201, 169, 110, 0.24);
+  --input-bg: rgba(18, 21, 25, 0.95);
+  --input-border: rgba(201, 169, 110, 0.3);
+  --gold-primary: #c9a96e;
+  --gold-bright: #e8c687;
+  --gold-dark: #9e7b3c;
+  --gold-glow: rgba(201, 169, 110, 0.3);
+  --gold-tag: #d4af37;
+  --wave-opacity: 0.85;
+  --bubble-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+}
+
+/* ── LIGHT THEME (SPECIALLY TUNED FOR BRIGHT SCREENS & ACCESSIBILITY) ── */
+body.tm-light {
+  --bg-main: #f4f1e8;
+  --bg-surface: #e9e3d3;
+  --bg-card: #ffffff;
+  --border-subtle: #cfc5b0;
+  --border-focus: #854d0e;
+  --text-main: #020617;          /* Ultra dark deep slate for maximum bright-screen legibility */
+  --text-muted: #334155;         /* Crisp high contrast slate */
+  --user-bubble: #dfd5c0;        /* High-contrast warm sand */
+  --user-border: #bca98a;
+  --agent-bubble: #ffffff;       /* Pure white card */
+  --agent-border: #cbd5e1;       /* Solid clear border */
+  --input-bg: #ffffff;
+  --input-border: #94a3b8;
+  --gold-primary: #854d0e;       /* Deep rich bronze gold - high contrast on bright white */
+  --gold-bright: #713f12;
+  --gold-dark: #582a08;
+  --gold-glow: rgba(133, 77, 14, 0.2);
+  --gold-tag: #854d0e;
+  --wave-opacity: 0.5;
+  --bubble-shadow: 0 4px 18px rgba(0, 0, 0, 0.08);
+}
+
+html, body {
+  height: 100%;
+  width: 100%;
+  font-family: var(--font-sans);
+  background-color: var(--bg-main);
+  color: var(--text-main);
+  overflow: hidden;
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+/* ── APP WRAPPER (FULL PAGE) ── */
+.app-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+  position: relative;
+  z-index: 1;
+}
+
+/* ── LUXURY BACKGROUND GLOW & WAVES ── */
+.bg-decorations {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.radial-glow {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(100px);
+}
+body.tm-dark .glow-1 {
+  top: -120px;
+  right: -80px;
+  width: 520px;
+  height: 520px;
+  background: radial-gradient(circle, rgba(201, 169, 110, 0.1) 0%, transparent 70%);
+}
+body.tm-dark .glow-2 {
+  bottom: -160px;
+  left: -120px;
+  width: 620px;
+  height: 620px;
+  background: radial-gradient(circle, rgba(201, 169, 110, 0.06) 0%, transparent 70%);
+}
+body.tm-light .glow-1 {
+  top: -120px;
+  right: -80px;
+  width: 520px;
+  height: 520px;
+  background: radial-gradient(circle, rgba(180, 130, 60, 0.12) 0%, transparent 70%);
+}
+body.tm-light .glow-2 {
+  bottom: -160px;
+  left: -120px;
+  width: 620px;
+  height: 620px;
+  background: radial-gradient(circle, rgba(180, 130, 60, 0.08) 0%, transparent 70%);
+}
+
+.ambient-wave {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
+  height: 280px;
+  opacity: var(--wave-opacity);
+  pointer-events: none;
+}
+
+/* ── HEADER NAVIGATION ── */
+.app-header {
+  height: 68px;
+  padding: 0 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--bg-surface);
+  border-bottom: 1.5px solid var(--border-subtle);
+  backdrop-filter: blur(16px);
+  position: relative;
+  z-index: 10;
+  flex-shrink: 0;
+}
+
+.brand-section {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.brand-logo {
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #16181b, #0d0e10);
+  border: 1.5px solid var(--gold-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 16px var(--gold-glow);
+}
+body.tm-light .brand-logo {
+  background: linear-gradient(135deg, #ffffff, #ece4d4);
+  border-color: var(--gold-primary);
+}
+
+.brand-logo-text {
+  font-family: var(--font-flareserif);
+  font-weight: 700;
+  font-size: 22px;
+  color: var(--gold-primary);
+}
+
+.brand-text h1 {
+  font-family: var(--font-flareserif);
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-main);
+}
+
+.brand-badge {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  padding: 2px 7px;
+  background: rgba(201, 169, 110, 0.18);
+  border: 1px solid var(--gold-primary);
+  color: var(--gold-primary);
+  border-radius: 20px;
+  text-transform: uppercase;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.brand-text p {
+  font-size: 12px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  font-weight: 500;
+}
+
+.status-dot {
+  width: 7.5px;
+  height: 7.5px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 8px #10b981;
+}
+
+/* Header Live Chips */
+.header-chips {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+@media (max-width: 860px) {
+  .header-chips { display: none; }
+}
+
+.chip-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 30px;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+.chip-item strong {
+  color: var(--gold-primary);
+  font-weight: 700;
+}
+
+/* Header Actions */
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.action-btn {
+  background: var(--bg-card);
+  border: 1.5px solid var(--border-subtle);
+  color: var(--text-main);
+  padding: 8px 14px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  transition: var(--transition-smooth);
+}
+.action-btn:hover {
+  border-color: var(--gold-primary);
+  background: rgba(201, 169, 110, 0.12);
+  color: var(--gold-bright);
+}
+
+.icon-btn {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+}
+
+/* ── CHAT CONTAINER (MAIN VIEWPORT) ── */
+.chat-container {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  z-index: 2;
+  padding: 24px 20px;
+  scroll-behavior: smooth;
+}
+
+.messages-wrapper {
+  width: 100%;
+  max-width: 900px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding-bottom: 24px;
+}
+
+/* ── WELCOME HERO BANNER ── */
+.welcome-hero {
+  text-align: center;
+  padding: 32px 20px 20px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.hero-emblem {
+  width: 64px;
+  height: 64px;
+  border-radius: 20px;
+  background: linear-gradient(135deg, rgba(201, 169, 110, 0.25), rgba(201, 169, 110, 0.05));
+  border: 2px solid var(--gold-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-flareserif);
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--gold-primary);
+  box-shadow: 0 8px 32px var(--gold-glow);
+  margin-bottom: 6px;
+}
+
+.hero-title {
+  font-family: var(--font-flareserif);
+  font-size: clamp(24px, 4vw, 32px);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text-main);
+}
+body.tm-dark .hero-title {
+  background: linear-gradient(135deg, #ffffff 40%, var(--gold-primary) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+body.tm-light .hero-title {
+  color: #020617;
+}
+
+.hero-desc {
+  max-width: 600px;
+  font-size: 14.5px;
+  line-height: 1.6;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 12px;
+  max-width: 780px;
+}
+
+.prompt-pill {
+  background: var(--bg-card);
+  border: 1.5px solid var(--border-subtle);
+  color: var(--text-main);
+  padding: 8px 16px;
+  border-radius: 30px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: var(--transition-smooth);
+  backdrop-filter: blur(8px);
+}
+.prompt-pill:hover {
+  background: rgba(201, 169, 110, 0.15);
+  border-color: var(--gold-primary);
+  color: var(--gold-bright);
+  transform: translateY(-1.5px);
+}
+
+/* ── CONVERSATION MESSAGES (CORMORANT GARAMOND · NORMAL BODY · BOLD HEADINGS) ── */
+.msg-row {
+  display: flex;
+  gap: 14px;
+  animation: fadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.msg-row.user {
+  justify-content: flex-end;
+}
+
+.msg-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-serif);
+  font-weight: 700;
+  font-size: 16px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.msg-avatar.bot {
+  background: linear-gradient(135deg, var(--gold-dark), var(--gold-primary));
+  color: #111;
+  box-shadow: 0 4px 14px var(--gold-glow);
+}
+
+.msg-avatar.user {
+  background: var(--border-subtle);
+  color: var(--text-muted);
+}
+
+.msg-content-wrapper {
+  max-width: 84%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Core Conversation Bubble: Cormorant Garamond with Normal Modern Numbers */
+.msg-bubble {
+  font-family: var(--font-serif);
+  font-weight: 500;
+  font-style: normal;
+  letter-spacing: 0.01em;
+  padding: 16px 22px;
+  border-radius: 18px;
+  position: relative;
+  word-break: break-word;
+  box-shadow: var(--bubble-shadow);
+  font-variant-numeric: lining-nums tabular-nums;
+  -webkit-font-feature-settings: "lnum" 1, "tnum" 1;
+  font-feature-settings: "lnum" 1, "tnum" 1;
+}
+
+/* AI Responses: Desktop 17px, Mobile 16px, Line Height 1.6, Normal Style */
+.msg-row.bot .msg-bubble {
+  font-size: 17px;
+  line-height: 1.6;
+  font-style: normal;
+  background: var(--agent-bubble);
+  border: 1.5px solid var(--agent-border);
+  border-top-left-radius: 4px;
+  color: var(--text-main);
+}
+
+/* User Messages: Desktop 17px, Mobile 16px, Line Height 1.5, Normal Style */
+.msg-row.user .msg-bubble {
+  font-size: 17px;
+  line-height: 1.5;
+  font-style: normal;
+  background: var(--user-bubble);
+  border: 1.5px solid var(--user-border);
+  border-top-right-radius: 4px;
+  color: var(--text-main);
+}
+
+/* Headings in Responses: Bold 700, 24px */
+.response-heading,
+.msg-bubble h1,
+.msg-bubble h2,
+.msg-bubble h3 {
+  font-family: var(--font-serif);
+  font-size: 24px;
+  font-weight: 700;
+  font-style: normal;
+  color: var(--gold-primary);
+  margin: 12px 0 6px 0;
+  line-height: 1.35;
+  display: block;
+}
+
+/* All strong/bold elements inside conversation */
+.msg-bubble strong {
+  font-weight: 700;
+  font-style: normal;
+}
+body.tm-dark .msg-bubble strong {
+  color: #ffffff;
+}
+body.tm-light .msg-bubble strong {
+  color: #020617;
+}
+
+/* Product title headings: Bold 700, 22px */
+.product-title-heading {
+  font-family: var(--font-serif);
+  font-size: 22px;
+  font-weight: 700;
+  font-style: normal;
+  color: var(--gold-bright);
+  margin: 16px 0 8px 0;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border-subtle);
+  display: block;
+}
+
+.section-title-heading,
+.main-title-heading {
+  font-family: var(--font-serif);
+  font-size: 24px;
+  font-weight: 700;
+  font-style: normal;
+  color: var(--gold-primary);
+  margin: 14px 0 8px 0;
+  display: block;
+}
+
+/* "Why you should buy it" highlighted callout */
+.why-buy-bubble {
+  background: rgba(201, 169, 110, 0.09);
+  border-left: 3px solid var(--gold-primary);
+  padding: 8px 14px;
+  border-radius: 6px;
+  margin: 8px 0 10px 0;
+  font-size: 16.5px;
+  line-height: 1.5;
+  color: var(--text-main);
+  font-style: normal;
+}
+body.tm-light .why-buy-bubble {
+  background: rgba(180, 83, 9, 0.08);
+  border-left-color: #b45309;
+}
+
+/* Bullet rows */
+.bullet-row {
+  margin: 4px 0;
+  padding-left: 18px;
+  position: relative;
+  font-size: 16px;
+  line-height: 1.5;
+}
+.bullet-row::before {
+  content: "•";
+  position: absolute;
+  left: 0;
+  color: var(--gold-primary);
+  font-weight: bold;
+  font-size: 17px;
+  line-height: 1.2;
+}
+
+/* Pricing specifics & modern numerals */
+.heading-num {
+  font-family: var(--font-sans);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  margin-right: 4px;
+}
+
+.price-strikethrough {
+  font-family: var(--font-sans);
+  text-decoration: line-through;
+  opacity: 0.65;
+  margin-right: 6px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.discount-pill {
+  font-family: var(--font-sans);
+  background: rgba(34, 197, 94, 0.16);
+  color: #22c55e;
+  border: 1px solid rgba(34, 197, 94, 0.35);
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  display: inline-block;
+  margin: 0 4px;
+}
+body.tm-light .discount-pill {
+  background: #dcfce7;
+  color: #15803d;
+  border-color: #86efac;
+}
+
+.final-price-row strong {
+  font-family: var(--font-sans);
+  font-size: 17.5px;
+  letter-spacing: 0.01em;
+  color: var(--gold-bright);
+}
+body.tm-light .final-price-row strong {
+  color: #854d0e;
+}
+
+.chat-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--border-subtle), transparent);
+  margin: 18px 0;
+}
+
+.msg-paragraph-gap {
+  height: 10px;
+}
+
+/* ── INLINE CHECKOUT & ORDER FORM ── */
+.checkout-card {
+  background: rgba(22, 18, 12, 0.92);
+  border: 1px solid rgba(201, 169, 110, 0.45);
+  border-radius: 14px;
+  padding: 22px 24px;
+  margin: 16px 0;
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  font-family: var(--font-serif);
+}
+body.tm-light .checkout-card {
+  background: #ffffff;
+  border-color: rgba(180, 83, 9, 0.35);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+}
+
+.checkout-header {
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.checkout-badge {
+  display: inline-block;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--gold-bright);
+  background: rgba(201, 169, 110, 0.15);
+  border: 1px solid rgba(201, 169, 110, 0.35);
+  padding: 2px 8px;
+  border-radius: 10px;
+  margin-bottom: 6px;
+}
+.checkout-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--gold-primary);
+  margin: 2px 0 4px 0;
+}
+.checkout-subtitle {
+  font-size: 15px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.checkout-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.form-row-2col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+@media (max-width: 600px) {
+  .form-row-2col {
+    grid-template-columns: 1fr;
+  }
+}
+.form-label {
+  font-family: var(--font-serif);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-main);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.label-step {
+  font-family: var(--font-sans);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--gold-primary);
+  color: #12100e;
+  font-size: 11px;
+  font-weight: 700;
+}
+.form-input {
+  font-family: var(--font-sans);
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(201, 169, 110, 0.3);
+  border-radius: 8px;
+  padding: 10px 14px;
+  color: var(--text-main);
+  font-size: 14.5px;
+  transition: all 0.2s ease;
+  outline: none;
+}
+body.tm-light .form-input {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #0f172a;
+}
+.form-input:focus {
+  border-color: var(--gold-primary);
+  box-shadow: 0 0 0 3px rgba(201, 169, 110, 0.2);
+}
+.form-input-highlight {
+  font-weight: 600;
+  color: var(--gold-bright);
+}
+body.tm-light .form-input-highlight {
+  color: #854d0e;
+}
+
+.checkout-submit-btn {
+  font-family: var(--font-serif);
+  font-size: 18px;
+  font-weight: 700;
+  background: linear-gradient(135deg, var(--gold-bright), var(--gold-primary));
+  color: #12100e;
+  border: none;
+  border-radius: 9px;
+  padding: 12px 24px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-shadow: 0 4px 16px rgba(201, 169, 110, 0.35);
+  transition: all 0.2s ease;
+  margin-top: 6px;
+}
+.checkout-submit-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 22px rgba(201, 169, 110, 0.5);
+}
+.checkout-submit-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Action button under recommendation card */
+.order-btn-wrap {
+  margin-top: 10px;
+  margin-bottom: 4px;
+}
+.item-order-action-btn {
+  font-family: var(--font-serif);
+  font-size: 16px;
+  font-weight: 700;
+  background: rgba(201, 169, 110, 0.12);
+  color: var(--gold-bright);
+  border: 1px solid rgba(201, 169, 110, 0.45);
+  border-radius: 8px;
+  padding: 8px 16px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+body.tm-light .item-order-action-btn {
+  background: rgba(180, 83, 9, 0.08);
+  color: #9a3412;
+  border-color: rgba(180, 83, 9, 0.35);
+}
+.item-order-action-btn:hover {
+  background: var(--gold-primary);
+  color: #12100e;
+  transform: translateY(-1px);
+}
+
+/* Order confirmed banner */
+.order-confirmed-banner {
+  padding: 10px 4px;
+  text-align: left;
+}
+.order-confirmed-icon {
+  font-size: 34px;
+  margin-bottom: 4px;
+}
+.order-confirmed-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: #22c55e;
+  margin-bottom: 4px;
+}
+.order-confirmed-subtitle {
+  font-size: 15px;
+  color: var(--text-muted);
+  margin-bottom: 14px;
+}
+.order-details-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(201, 169, 110, 0.25);
+  border-radius: 10px;
+  padding: 14px;
+  margin-bottom: 12px;
+}
+body.tm-light .order-details-grid {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+.order-detail-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.detail-label {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+}
+.detail-value {
+  font-family: var(--font-serif);
+  font-size: 16px;
+  color: var(--text-main);
+}
+.passkey-alert-pill {
+  font-family: var(--font-sans);
+  background: rgba(201, 169, 110, 0.14);
+  border: 1px solid rgba(201, 169, 110, 0.35);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 14px;
+  color: var(--text-main);
+  margin-top: 10px;
+}
+.form-status-msg {
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  margin-top: 8px;
+  padding: 8px 12px;
+  border-radius: 6px;
+}
+.form-status-error {
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  color: #ef4444;
+}
+
+/* Code blocks: Desktop 14px, Mobile 13-14px */
+.msg-bubble code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 14px;
+  font-weight: 600;
+  font-style: normal;
+  background: rgba(201, 169, 110, 0.16);
+  border: 1px solid rgba(201, 169, 110, 0.35);
+  padding: 2px 7px;
+  border-radius: 5px;
+  color: var(--gold-tag);
+}
+
+/* Small timestamps / labels: 12px */
+.msg-time {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 5px;
+  padding: 0 4px;
+  font-weight: 500;
+  font-style: normal;
+}
+.msg-row.user .msg-time {
+  text-align: right;
+}
+
+/* ── TYPING INDICATOR ── */
+.typing-row {
+  display: none;
+  align-items: center;
+  gap: 14px;
+}
+.typing-row.active {
+  display: flex;
+}
+.typing-dots {
+  background: var(--agent-bubble);
+  border: 1.5px solid var(--agent-border);
+  padding: 12px 20px;
+  border-radius: 18px;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  box-shadow: var(--bubble-shadow);
+}
+.dot {
+  width: 7.5px;
+  height: 7.5px;
+  border-radius: 50%;
+  background: var(--gold-primary);
+  animation: waveDot 1.3s infinite ease-in-out;
+}
+.dot:nth-child(2) { animation-delay: 0.2s; }
+.dot:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes waveDot {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-5px); opacity: 1; }
+}
+
+/* ── INPUT FOOTER AREA ── */
+.app-footer {
+  padding: 14px 24px 20px 24px;
+  position: relative;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: linear-gradient(to top, var(--bg-main) 65%, transparent);
+}
+
+.input-capsule {
+  width: 100%;
+  max-width: 900px;
+  background: var(--input-bg);
+  border: 1.5px solid var(--input-border);
+  border-radius: 18px;
+  padding: 10px 14px 10px 20px;
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.14);
+  transition: var(--transition-smooth);
+  backdrop-filter: blur(16px);
+}
+.input-capsule:focus-within {
+  border-color: var(--border-focus);
+  box-shadow: 0 8px 36px var(--gold-glow);
+}
+
+/* Input Text: Cormorant Garamond, Normal, Regular */
+.chat-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text-main);
+  font-family: var(--font-serif);
+  font-size: 17px;
+  font-weight: 500;
+  font-style: normal;
+  line-height: 1.5;
+  resize: none;
+  max-height: 140px;
+  min-height: 24px;
+  padding: 4px 0;
+}
+/* Placeholder text */
+.chat-input::placeholder {
+  font-family: var(--font-serif);
+  font-size: 16px;
+  font-weight: 500;
+  font-style: normal;
+  color: var(--text-muted);
+}
+
+.send-btn {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--gold-primary), var(--gold-dark));
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #111;
+  transition: var(--transition-smooth);
+  flex-shrink: 0;
+}
+body.tm-light .send-btn {
+  color: #ffffff;
+}
+.send-btn:hover:not(:disabled) {
+  transform: scale(1.05);
+  box-shadow: 0 4px 16px var(--gold-glow);
+}
+.send-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Small label: 12px */
+.footer-disclaimer {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+}
+
+/* ── CART BUTTON (ON EACH PRODUCT CARD) ── */
+.cart-btn-wrap {
+  margin-top: 14px;
+  display: flex;
+  align-items: center;
+}
+.add-to-cart-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 18px;
+  border-radius: 20px;
+  background: linear-gradient(135deg, rgba(201, 169, 110, 0.15), rgba(201, 169, 110, 0.05));
+  border: 1.5px solid var(--gold-primary);
+  color: var(--gold-bright);
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition-smooth);
+}
+body.tm-light .add-to-cart-btn {
+  background: linear-gradient(135deg, #fefce8, #fef9c3);
+  color: var(--gold-dark);
+  border-color: var(--gold-primary);
+}
+.add-to-cart-btn:hover {
+  transform: translateY(-2px);
+  background: linear-gradient(135deg, var(--gold-primary), var(--gold-dark));
+  color: #111;
+  box-shadow: 0 4px 16px var(--gold-glow);
+}
+body.tm-light .add-to-cart-btn:hover {
+  color: #ffffff;
+}
+.add-to-cart-btn.added {
+  background: #15803d !important;
+  border-color: #16a34a !important;
+  color: #ffffff !important;
+  transform: scale(1.02);
+}
+
+/* ── HEADER PLACE ORDER BUTTON ── */
+.header-place-order-btn {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 16px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--gold-primary), var(--gold-dark));
+  border: none;
+  color: #111;
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 4px 14px var(--gold-glow);
+  transition: var(--transition-smooth);
+  animation: popIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+body.tm-light .header-place-order-btn {
+  color: #ffffff;
+}
+.header-place-order-btn:hover {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 6px 20px var(--gold-glow);
+}
+.cart-badge-pill {
+  background: #111;
+  color: var(--gold-bright);
+  font-size: 11px;
+  font-weight: 800;
+  padding: 2px 7px;
+  border-radius: 10px;
+  min-width: 18px;
+  text-align: center;
+}
+body.tm-light .cart-badge-pill {
+  background: #ffffff;
+  color: var(--gold-dark);
+}
+
+/* ── FLOATING CART & PLACE ORDER BAR (ABOVE INPUT) ── */
+.floating-cart-bar {
+  display: none;
+  width: 100%;
+  max-width: 900px;
+  margin-bottom: 10px;
+  padding: 10px 18px;
+  border-radius: 14px;
+  background: var(--bg-surface);
+  border: 1.5px solid var(--gold-primary);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2), 0 0 16px var(--gold-glow);
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  animation: slideUpFade 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  backdrop-filter: blur(12px);
+}
+@keyframes slideUpFade {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes popIn {
+  from { opacity: 0; transform: scale(0.9); }
+  to { opacity: 1; transform: scale(1); }
+}
+.floating-cart-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: var(--text-main);
+  font-family: var(--font-sans);
+}
+.floating-cart-icon {
+  font-size: 18px;
+}
+.floating-checkout-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 18px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--gold-primary), var(--gold-dark));
+  border: none;
+  color: #111;
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: var(--transition-smooth);
+}
+body.tm-light .floating-checkout-btn {
+  color: #ffffff;
+}
+.floating-checkout-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px var(--gold-glow);
+}
+
+/* ── CHECKOUT MODAL OVERLAY & CARD ── */
+.checkout-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(10px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: fadeIn 0.2s ease forwards;
+}
+.checkout-modal-card {
+  width: 100%;
+  max-width: 680px;
+  max-height: 90vh;
+  background: var(--bg-surface);
+  border: 1.5px solid var(--border-focus);
+  border-radius: 18px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: modalScaleUp 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+@keyframes modalScaleUp {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.modal-header {
+  padding: 20px 24px;
+  border-bottom: 1.5px solid var(--border-subtle);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  background: var(--bg-card);
+}
+.modal-title {
+  font-family: var(--font-serif);
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-main);
+  margin-bottom: 4px;
+}
+.modal-subtitle {
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+.modal-close-btn {
+  background: transparent;
+  border: none;
+  font-size: 18px;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 8px;
+  transition: var(--transition-smooth);
+}
+.modal-close-btn:hover {
+  color: var(--text-main);
+  background: rgba(255, 255, 255, 0.1);
+}
+.modal-body {
+  padding: 24px;
+  overflow-y: auto;
+}
+.modal-section-title {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--gold-primary);
+  margin-bottom: 12px;
+}
+.cart-items-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 14px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.cart-item-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  gap: 12px;
+}
+.cart-item-info {
+  flex: 1;
+  min-width: 0;
+}
+.cart-item-title {
+  font-weight: 600;
+  font-size: 14.5px;
+  color: var(--text-main);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cart-item-price {
+  font-size: 13px;
+  color: var(--gold-primary);
+  margin-top: 2px;
+  font-family: var(--font-sans);
+}
+.cart-qty-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.qty-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  color: var(--text-main);
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.qty-btn:hover {
+  background: var(--gold-primary);
+  color: #111;
+}
+.qty-num {
+  font-size: 13.5px;
+  font-weight: 600;
+  min-width: 20px;
+  text-align: center;
+  font-family: var(--font-sans);
+}
+.cart-item-total {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--text-main);
+  min-width: 75px;
+  text-align: right;
+  font-family: var(--font-sans);
+}
+.cart-remove-btn {
+  background: transparent;
+  border: none;
+  color: #ef4444;
+  cursor: pointer;
+  padding: 4px;
+  font-size: 14px;
+  border-radius: 4px;
+}
+.cart-remove-btn:hover {
+  background: rgba(239, 68, 68, 0.1);
+}
+.cart-order-summary-bar {
+  background: var(--bg-card);
+  border: 1px dashed var(--border-focus);
+  padding: 12px 16px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: var(--font-sans);
+  font-size: 14px;
+}
+.summary-total {
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--gold-bright);
+}
+body.tm-light .summary-total {
+  color: var(--gold-dark);
+}
+.modal-form-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 20px;
+}
+.modal-cancel-btn {
+  padding: 10px 18px;
+  border-radius: 10px;
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.modal-cancel-btn:hover {
+  color: var(--text-main);
+  border-color: var(--text-muted);
+}
+.modal-submit-btn {
+  padding: 11px 24px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--gold-primary), var(--gold-dark));
+  border: none;
+  color: #111;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 4px 16px var(--gold-glow);
+  transition: var(--transition-smooth);
+}
+body.tm-light .modal-submit-btn {
+  color: #ffffff;
+}
+.modal-submit-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px var(--gold-glow);
+}
+.modal-submit-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.modal-status-msg {
+  margin-top: 12px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 13.5px;
+}
+
+/* Mobile Responsiveness */
+@media (max-width: 768px) {
+  .app-header { padding: 0 16px; }
+  .chat-container { padding: 16px 12px; }
+  .msg-content-wrapper { max-width: 90%; }
+  .msg-row.bot .msg-bubble { font-size: 15.5px; }
+  .msg-row.user .msg-bubble { font-size: 15.5px; }
+  .response-heading, .msg-bubble h1, .msg-bubble h2, .msg-bubble h3 { font-size: 20px; }
+  .msg-bubble code { font-size: 13.5px; }
+  .chat-input { font-size: 16px; }
+  .chat-input::placeholder { font-size: 14px; }
+  .checkout-modal-card { max-height: 95vh; }
+  .modal-body { padding: 16px; }
+}
+</style>
+</head>
+<body class="tm-dark">
+
+<div class="bg-decorations">
+  <div class="radial-glow glow-1"></div>
+  <div class="radial-glow glow-2"></div>
+  <!-- Luxury SVG Gold Wave on Bottom -->
+  <svg class="ambient-wave" viewBox="0 0 1440 280" fill="none" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M0,180 C360,110 720,240 1080,150 C1260,105 1380,140 1440,160 L1440,280 L0,280 Z" fill="url(#waveGrad)" opacity="0.35"/>
+    <path d="M0,180 C360,110 720,240 1080,150 C1260,105 1380,140 1440,160" stroke="url(#goldStroke)" stroke-width="1.8" fill="none"/>
+    <defs>
+      <linearGradient id="waveGrad" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#c9a96e" stop-opacity="0.12"/>
+        <stop offset="50%" stop-color="#c9a96e" stop-opacity="0.06"/>
+        <stop offset="100%" stop-color="#c9a96e" stop-opacity="0"/>
+      </linearGradient>
+      <linearGradient id="goldStroke" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="#c9a96e" stop-opacity="0.1"/>
+        <stop offset="25%" stop-color="#e5c385" stop-opacity="0.8"/>
+        <stop offset="75%" stop-color="#c9a96e" stop-opacity="0.9"/>
+        <stop offset="100%" stop-color="#9e7b3c" stop-opacity="0.1"/>
+      </linearGradient>
+    </defs>
+  </svg>
+</div>
+
+<div class="app-container">
+
+  <!-- TOP HEADER -->
+  <header class="app-header">
+    <div class="brand-section">
+      <div class="brand-logo">
+        <span class="brand-logo-text">T</span>
+      </div>
+      <div class="brand-text">
+        <h1>TechMart <span class="brand-badge">AI Concierge</span></h1>
+        <p><span class="status-dot"></span> Live Google Sheets & Gmail Active</p>
+      </div>
+    </div>
+
+    <!-- Live Metrics Pills -->
+    <div class="header-chips">
+      <div class="chip-item">
+        <span>📦 Catalog:</span>
+        <strong id="stat-products">1,320+ Live</strong>
+      </div>
+      <div class="chip-item">
+        <span>⚡ Sheets Sync:</span>
+        <strong>Real-Time (0s TTL)</strong>
+      </div>
+      <div class="chip-item">
+        <span>🔒 Orders:</span>
+        <strong id="stat-orders">Live Passkey Protected</strong>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="header-actions">
+      <!-- Place Order Button (Pop-up when cart has items) -->
+      <button class="header-place-order-btn" id="header-place-order-btn" style="display: none;" onclick="openCartCheckoutModal()" title="View Cart & Place Order">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
+          <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
+        </svg>
+        <span>Place Order</span>
+        <span class="cart-badge-pill" id="header-cart-badge">0</span>
+      </button>
+
+      <!-- New Chat -->
+      <button class="action-btn" id="new-chat-btn" title="Start a fresh conversation">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 5v14M5 12h14"/>
+        </svg>
+        <span>New Chat</span>
+      </button>
+
+      <!-- Theme Switcher -->
+      <button class="action-btn icon-btn" id="theme-btn" title="Toggle Light / Dark Mode">
+        <svg id="icon-sun" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+          <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+        </svg>
+        <svg id="icon-moon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:none;">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- CHAT MESSAGES SCROLLER -->
+  <main class="chat-container" id="chat-container">
+    <div class="messages-wrapper" id="messages-wrapper">
+
+      <!-- WELCOME HERO SECTION -->
+      <div class="welcome-hero" id="welcome-hero">
+        <div class="hero-emblem">T</div>
+        <h2 class="hero-title">Experience TechMart Concierge</h2>
+        <p class="hero-desc">
+          I can guide you through our 1,320+ products, calculate exclusive final discounts, take your order, sync directly with Google Sheets, send your confirmation email with a secret passkey, and process policy-checked refunds.
+        </p>
+
+        <div class="hero-actions">
+          <button class="prompt-pill" data-prompt="Recommend the best laptops with discount and final price">
+            <span>💻</span> Best Laptops & Discounts
+          </button>
+          <button class="prompt-pill" data-prompt="I want to place an order for a product">
+            <span>🛍️</span> Place an Order
+          </button>
+          <button class="prompt-pill" data-prompt="I want to track my order using my secret passkey">
+            <span>🔒</span> Track Order (Secret Passkey)
+          </button>
+          <button class="prompt-pill" data-prompt="What is your return and refund policy?">
+            <span>📋</span> Return & Refund Policy
+          </button>
+          <button class="prompt-pill" data-prompt="I would like to request a refund for an order">
+            <span>↩️</span> Request Refund
+          </button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- TYPING INDICATOR -->
+    <div class="messages-wrapper" style="padding-bottom: 0;">
+      <div class="msg-row bot typing-row" id="typing-indicator">
+        <div class="msg-avatar bot">T</div>
+        <div class="typing-dots">
+          <div class="dot"></div>
+          <div class="dot"></div>
+          <div class="dot"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- BOTTOM INPUT BAR -->
+  <footer class="app-footer">
+    <!-- FLOATING CART & PLACE ORDER BAR -->
+    <div id="floating-cart-bar" class="floating-cart-bar" style="display: none;">
+      <div class="floating-cart-info">
+        <span class="floating-cart-icon">🛒</span>
+        <span class="floating-cart-text">
+          <strong id="floating-cart-count">0 items</strong> in your cart · Total: <strong id="floating-cart-total">$0.00</strong>
+        </span>
+      </div>
+      <button type="button" class="floating-checkout-btn" onclick="openCartCheckoutModal()">
+        <span>Place Order</span>
+        <span style="font-weight: 800;">→</span>
+      </button>
+    </div>
+
+    <div class="input-capsule">
+      <textarea
+        id="user-input"
+        class="chat-input"
+        placeholder="Ask about products, calculate final discounts, place orders, or enter your order passkey..."
+        rows="1"
+        maxlength="1000"
+      ></textarea>
+      <button class="send-btn" id="send-btn" aria-label="Send message">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+        </svg>
+      </button>
+    </div>
+    <div class="footer-disclaimer">
+      <span>✨ TechMart AI Engine</span> · <span>Live Google Sheets Sync & Gmail Dispatch Active</span>
+    </div>
+  </footer>
+
+</div>
+
+<!-- CART & CHECKOUT MODAL -->
+<div class="checkout-modal-overlay" id="cart-checkout-modal" style="display: none;" onclick="handleModalOverlayClick(event)">
+  <div class="checkout-modal-card">
+    <div class="modal-header">
+      <div class="modal-title-wrap">
+        <h2 class="modal-title">🛍️ Review Cart &amp; Place Order</h2>
+        <p class="modal-subtitle">Review your selected items and complete your delivery details to place your order directly.</p>
+      </div>
+      <button type="button" class="modal-close-btn" onclick="closeCartCheckoutModal()" aria-label="Close modal">✕</button>
+    </div>
+
+    <div class="modal-body" id="modal-body-content">
+      <!-- CART ITEMS LIST SECTION -->
+      <div class="modal-section-title">
+        <span>1. Selected Items in Cart (<span id="modal-cart-items-count">0</span>)</span>
+      </div>
+      <div class="cart-items-list" id="modal-cart-items-list">
+        <!-- Rendered dynamically -->
+      </div>
+      <div class="cart-order-summary-bar" id="modal-cart-summary-bar">
+        <!-- Subtotal, discounts, grand total rendered dynamically -->
+      </div>
+
+      <!-- CUSTOMER DELIVERY DETAILS FORM -->
+      <div class="modal-section-title" style="margin-top: 24px;">
+        <span>2. Customer &amp; Delivery Information</span>
+      </div>
+      <form id="cart-checkout-form" onsubmit="handleCartCheckoutSubmit(event)">
+        <div class="form-group">
+          <label class="form-label">Full Name</label>
+          <input type="text" name="customer_name" class="form-input" required placeholder="e.g. John Doe" />
+        </div>
+
+        <div class="form-row-2col">
+          <div class="form-group">
+            <label class="form-label">Email Address (for passkey &amp; receipt)</label>
+            <input type="email" name="email" class="form-input" required placeholder="e.g. arhamakhan798@gmail.com" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Contact Phone Number</label>
+            <input type="tel" name="contact_number" class="form-input" required placeholder="e.g. +1 555-0199" />
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Shipping Address</label>
+          <input type="text" name="customer_address" class="form-input" required placeholder="Street address, apartment, city, state, postal code" />
+        </div>
+
+        <div class="form-row-2col">
+          <div class="form-group">
+            <label class="form-label">Bank Name</label>
+            <input type="text" name="bank" class="form-input" required placeholder="e.g. Chase Bank / Standard Bank" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">IBAN / Account Number</label>
+            <input type="text" name="iban" class="form-input" required placeholder="e.g. US00TECH0011223344" />
+          </div>
+        </div>
+
+        <div class="modal-form-actions">
+          <button type="button" class="modal-cancel-btn" onclick="closeCartCheckoutModal()">Continue Shopping</button>
+          <button type="submit" class="modal-submit-btn" id="modal-submit-btn">
+            <span class="btn-text">Confirm &amp; Place Order</span>
+            <span class="btn-icon">→</span>
+          </button>
+        </div>
+        <div class="modal-status-msg" id="modal-status-msg" style="display: none;"></div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── CONFIG ──────────────────────────────────────────────────────────────────
+const CONFIG = {
+  apiUrl: window.location.origin.includes('localhost') ? window.location.origin : 'http://localhost:5000',
+};
+
+// ── STATE ───────────────────────────────────────────────────────────────────
+let cart = [];
+try {
+  cart = JSON.parse(sessionStorage.getItem('techmart_cart') || '[]');
+} catch(e) { cart = []; }
+
+let history = [];
+try {
+  history = JSON.parse(sessionStorage.getItem('techmart_history') || '[]');
+} catch(e) { history = []; }
+
+let isBusy = false;
+let isDark = true;
+
+// ── DOM ELEMENTS ────────────────────────────────────────────────────────────
+const chatContainer = document.getElementById('chat-container');
+const messagesWrapper = document.getElementById('messages-wrapper');
+const userInput = document.getElementById('user-input');
+const sendBtn = document.getElementById('send-btn');
+const typingIndicator = document.getElementById('typing-indicator');
+const themeBtn = document.getElementById('theme-btn');
+const iconSun = document.getElementById('icon-sun');
+const iconMoon = document.getElementById('icon-moon');
+const newChatBtn = document.getElementById('new-chat-btn');
+const headerPlaceOrderBtn = document.getElementById('header-place-order-btn');
+const headerCartBadge = document.getElementById('header-cart-badge');
+const floatingCartBar = document.getElementById('floating-cart-bar');
+const floatingCartCount = document.getElementById('floating-cart-count');
+const floatingCartTotal = document.getElementById('floating-cart-total');
+
+// ── INITIALIZATION ──────────────────────────────────────────────────────────
+function init() {
+  // Bind Prompt Pills
+  document.querySelectorAll('.prompt-pill').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const prompt = btn.getAttribute('data-prompt');
+      if (prompt) sendMessage(prompt);
+    });
+  });
+
+  // Restore history from sessionStorage if available
+  if (history && history.length > 0) {
+    const hero = document.getElementById('welcome-hero');
+    if (hero) hero.style.display = 'none';
+    messagesWrapper.innerHTML = '';
+    history.forEach(item => {
+      if (item.role === 'user') {
+        appendUserMessage(item.content, false);
+      } else if (item.role === 'agent') {
+        appendBotMessage(item.content, false);
+      }
+    });
+  }
+
+  // Restore cart UI
+  updateCartUi();
+
+  // Fetch live metrics
+  fetchHealth();
+
+  userInput.focus();
+}
+
+function fetchHealth() {
+  fetch(`${CONFIG.apiUrl}/api/health`)
+    .then(r => r.json())
+    .then(data => {
+      if (data.products) document.getElementById('stat-products').textContent = `${data.products.toLocaleString()} Live`;
+      if (data.orders !== undefined) document.getElementById('stat-orders').textContent = `${data.orders} Saved (Protected)`;
+    })
+    .catch(() => {});
+}
+
+// ── THEME TOGGLE (LIGHT / DARK) ─────────────────────────────────────────────
+function setTheme(dark) {
+  isDark = dark;
+  document.body.classList.toggle('tm-dark', dark);
+  document.body.classList.toggle('tm-light', !dark);
+  iconSun.style.display = dark ? 'block' : 'none';
+  iconMoon.style.display = !dark ? 'block' : 'none';
+}
+themeBtn.addEventListener('click', () => setTheme(!isDark));
+
+// ── CART MANAGEMENT & PLACE ORDER VISIBILITY ─────────────────────────────────
+function updateCartUi() {
+  const totalItems = cart.reduce((sum, item) => sum + (item.quantity || 1), 0);
+  const totalAmount = cart.reduce((sum, item) => {
+    const p = parseFloat(String(item.final_price || item.price || 0).replace(/[^0-9.]/g, '')) || 0;
+    return sum + (p * (item.quantity || 1));
+  }, 0);
+
+  // CRITICAL RULE:
+  // If user has not selected any item to cart, place order button remains completely invisible.
+  // As soon as user clicks Add to Cart to 1 or multiple items, button pops up at top header & floating bar.
+  if (totalItems === 0) {
+    if (headerPlaceOrderBtn) headerPlaceOrderBtn.style.display = 'none';
+    if (floatingCartBar) floatingCartBar.style.display = 'none';
+    closeCartCheckoutModal();
+  } else {
+    if (headerPlaceOrderBtn) {
+      headerPlaceOrderBtn.style.display = 'inline-flex';
+      if (headerCartBadge) headerCartBadge.textContent = totalItems;
+    }
+    if (floatingCartBar) {
+      floatingCartBar.style.display = 'flex';
+      if (floatingCartCount) floatingCartCount.textContent = `${totalItems} item${totalItems > 1 ? 's' : ''}`;
+      if (floatingCartTotal) floatingCartTotal.textContent = `$${totalAmount.toFixed(2)}`;
+    }
+  }
+
+  try {
+    sessionStorage.setItem('techmart_cart', JSON.stringify(cart));
+  } catch(e) {}
+}
+
+function addToCart(prod) {
+  if (!prod) return;
+  const sku = prod.sku || (prod.brand + ' ' + prod.model);
+  const existing = cart.find(item => (item.sku && item.sku === sku) || (item.model === prod.model && item.brand === prod.brand));
+  if (existing) {
+    existing.quantity = (existing.quantity || 1) + 1;
+  } else {
+    cart.push({
+      brand: prod.brand || '',
+      model: prod.model || '',
+      sku: prod.sku || '',
+      category: prod.category || '',
+      price: prod.price || '',
+      discount: prod.discount || '',
+      final_price: prod.final_price || prod.price || '',
+      quantity: 1
+    });
+  }
+  updateCartUi();
+}
+
+function handleAddToCartClick(btn) {
+  try {
+    const raw = btn.getAttribute('data-product');
+    const prod = JSON.parse(decodeURIComponent(raw));
+    addToCart(prod);
+
+    // Micro-animation feedback
+    btn.classList.add('added');
+    const icon = btn.querySelector('.cart-btn-icon');
+    const text = btn.querySelector('.cart-btn-text');
+    if (icon) icon.innerHTML = '✓';
+    if (text) text.textContent = 'Added to Cart!';
+
+    setTimeout(() => {
+      btn.classList.remove('added');
+      if (icon) {
+        icon.innerHTML = `
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
+            <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
+          </svg>
+        `;
+      }
+      if (text) text.textContent = 'Add to Cart';
+    }, 1200);
+  } catch(e) {
+    console.error('Error adding to cart:', e);
+  }
+}
+
+function openCartCheckoutModal() {
+  if (!cart || cart.length === 0) return;
+  renderCartModalContent();
+  const modal = document.getElementById('cart-checkout-modal');
+  if (modal) {
+    modal.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+  }
+}
+
+function closeCartCheckoutModal() {
+  const modal = document.getElementById('cart-checkout-modal');
+  if (modal) {
+    modal.style.display = 'none';
+    document.body.style.overflow = '';
+  }
+}
+
+function handleModalOverlayClick(e) {
+  if (e.target && e.target.id === 'cart-checkout-modal') {
+    closeCartCheckoutModal();
+  }
+}
+
+function renderCartModalContent() {
+  const listEl = document.getElementById('modal-cart-items-list');
+  const countEl = document.getElementById('modal-cart-items-count');
+  const summaryEl = document.getElementById('modal-cart-summary-bar');
+  const submitBtn = document.getElementById('modal-submit-btn');
+
+  if (!listEl) return;
+
+  const totalItems = cart.reduce((sum, item) => sum + (item.quantity || 1), 0);
+  if (countEl) countEl.textContent = totalItems;
+
+  if (cart.length === 0) {
+    listEl.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-muted);">Your cart is empty. Add items from the chat to proceed.</div>';
+    if (summaryEl) summaryEl.innerHTML = '';
+    closeCartCheckoutModal();
+    return;
+  }
+
+  let totalAmount = 0;
+  let itemsHtml = '';
+
+  cart.forEach((it, idx) => {
+    const unitPrice = parseFloat(String(it.final_price || it.price || 0).replace(/[^0-9.]/g, '')) || 0;
+    const lineTotal = unitPrice * (it.quantity || 1);
+    totalAmount += lineTotal;
+
+    itemsHtml += `
+      <div class="cart-item-row">
+        <div class="cart-item-info">
+          <div class="cart-item-title">${escapeHtml(it.brand)} ${escapeHtml(it.model)}</div>
+          <div class="cart-item-price">${escapeHtml(it.final_price || it.price)} ${it.discount ? `<span style="color:#16a34a; font-size:12px; margin-left:6px;">(${it.discount} OFF)</span>` : ''}</div>
+        </div>
+        <div class="cart-qty-control">
+          <button type="button" class="qty-btn" onclick="changeCartQty(${idx}, -1)" title="Decrease quantity">−</button>
+          <span class="qty-num">${it.quantity || 1}</span>
+          <button type="button" class="qty-btn" onclick="changeCartQty(${idx}, 1)" title="Increase quantity">+</button>
+        </div>
+        <div class="cart-item-total">$${lineTotal.toFixed(2)}</div>
+        <button type="button" class="cart-remove-btn" onclick="removeCartItem(${idx})" title="Remove item from cart">✕</button>
+      </div>
+    `;
+  });
+
+  listEl.innerHTML = itemsHtml;
+  if (summaryEl) {
+    summaryEl.innerHTML = `
+      <span>Total Items: <strong>${totalItems}</strong></span>
+      <span>Grand Total: <strong class="summary-total">$${totalAmount.toFixed(2)} USD</strong></span>
+    `;
+  }
+
+  if (submitBtn) {
+    submitBtn.innerHTML = `
+      <span class="btn-text">Confirm &amp; Place Order ($${totalAmount.toFixed(2)})</span>
+      <span class="btn-icon">→</span>
+    `;
+  }
+}
+
+function changeCartQty(idx, delta) {
+  if (!cart[idx]) return;
+  cart[idx].quantity = (cart[idx].quantity || 1) + delta;
+  if (cart[idx].quantity <= 0) {
+    cart.splice(idx, 1);
+  }
+  updateCartUi();
+  renderCartModalContent();
+}
+
+function removeCartItem(idx) {
+  if (!cart[idx]) return;
+  cart.splice(idx, 1);
+  updateCartUi();
+  renderCartModalContent();
+}
+
+async function handleCartCheckoutSubmit(e) {
+  e.preventDefault();
+  const form = document.getElementById('cart-checkout-form');
+  const btn = document.getElementById('modal-submit-btn');
+  const statusEl = document.getElementById('modal-status-msg');
+  const modalBody = document.getElementById('modal-body-content');
+
+  if (!cart || cart.length === 0) {
+    statusEl.className = 'modal-status-msg form-status-error';
+    statusEl.style.display = 'block';
+    statusEl.textContent = '❌ Your cart is empty. Please select products first.';
+    return;
+  }
+
+  const formData = new FormData(form);
+  const payload = {
+    customer_name: (formData.get('customer_name') || '').trim(),
+    email: (formData.get('email') || '').trim(),
+    contact_number: (formData.get('contact_number') || '').trim(),
+    customer_address: (formData.get('customer_address') || '').trim(),
+    bank: (formData.get('bank') || '').trim(),
+    iban: (formData.get('iban') || '').trim(),
+    items: cart.map(it => ({
+      brand: it.brand,
+      model: it.model,
+      sku: it.sku,
+      quantity: it.quantity || 1,
+      price: it.price,
+      final_price: it.final_price
+    }))
+  };
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="btn-text">⏳ Syncing with Google Sheets &amp; Gmail...</span>';
+  statusEl.style.display = 'none';
+
+  try {
+    const res = await fetch(`${CONFIG.apiUrl}/api/order/place`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await res.json();
+    if (!res.ok || data.error) {
+      throw new Error(data.error || 'Failed to place order');
+    }
+
+    // Success inside modal
+    modalBody.innerHTML = `
+      <div class="order-confirmed-banner">
+        <div class="order-confirmed-icon">🎉</div>
+        <div class="order-confirmed-title">Order Placed Successfully!</div>
+        <div class="order-confirmed-subtitle">Your order has been recorded directly in Google Sheets and a confirmation receipt has been emailed to <strong>${escapeHtml(payload.email)}</strong>.</div>
+
+        <div class="order-details-grid">
+          <div class="order-detail-item">
+            <span class="detail-label">Order Number</span>
+            <span class="detail-value"><code>${data.order_number}</code></span>
+          </div>
+          <div class="order-detail-item">
+            <span class="detail-label">Secret Passkey</span>
+            <span class="detail-value"><code>${data.passkey}</code></span>
+          </div>
+          <div class="order-detail-item">
+            <span class="detail-label">Total Items</span>
+            <span class="detail-value">${data.total_items} items ordered</span>
+          </div>
+          <div class="order-detail-item">
+            <span class="detail-label">Final Payable Price</span>
+            <span class="detail-value"><strong>${data.final_payable_price}</strong></span>
+          </div>
+          <div class="order-detail-item">
+            <span class="detail-label">Estimated Delivery</span>
+            <span class="detail-value">${data.delivery}</span>
+          </div>
+          <div class="order-detail-item">
+            <span class="detail-label">Refund Policy Window</span>
+            <span class="detail-value">${data.refund_window}</span>
+          </div>
+        </div>
+
+        <div class="passkey-alert-pill">
+          🔒 <strong>Keep your secret passkey safe:</strong> You will need <code>${data.passkey}</code> to track your order or request a return.
+        </div>
+
+        <div style="margin-top: 24px; text-align: center;">
+          <button type="button" class="modal-submit-btn" style="margin: 0 auto;" onclick="closeCartCheckoutModal()">Done &amp; Return to Chat</button>
+        </div>
+      </div>
+    `;
+
+    // Also post confirmation to the chat stream
+    const confirmationChatText = `
+### 🎉 Order Placed Successfully!
+- **Order Number:** \`${data.order_number}\`
+- **Total Items:** ${data.total_items} item(s)
+- **Final Payable Price:** **${data.final_payable_price}**
+- **Delivery Estimate:** ${data.delivery}
+- **Refund Policy Window:** ${data.refund_window}
+
+🔒 **Your Secret Passkey:** \`${data.passkey}\`
+
+A detailed confirmation email has been dispatched to **${payload.email}**. You can track your order anytime using your Order Number and Secret Passkey!
+`;
+    appendBotMessage(confirmationChatText);
+    history.push({ role: 'agent', content: confirmationChatText });
+    try { sessionStorage.setItem('techmart_history', JSON.stringify(history)); } catch(e) {}
+
+    // Empty cart and update UI
+    cart = [];
+    updateCartUi();
+    fetchHealth();
+    scrollToBottom();
+
+  } catch(err) {
+    console.error('Order error:', err);
+    btn.disabled = false;
+    btn.innerHTML = '<span class="btn-text">Confirm &amp; Place Order</span><span class="btn-icon">→</span>';
+    statusEl.className = 'modal-status-msg form-status-error';
+    statusEl.style.display = 'block';
+    statusEl.textContent = '❌ ' + (err.message || 'Error placing order. Please try again.');
+  }
+}
+
+// ── MESSAGE RENDERING ───────────────────────────────────────────────────────
+function getTimeString() {
+  return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function appendUserMessage(text, saveHistory = true) {
+  const row = document.createElement('div');
+  row.className = 'msg-row user';
+  row.innerHTML = `
+    <div class="msg-content-wrapper">
+      <div class="msg-bubble">${escapeHtml(text)}</div>
+      <div class="msg-time">${getTimeString()}</div>
+    </div>
+    <div class="msg-avatar user">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+    </div>
+  `;
+  messagesWrapper.appendChild(row);
+  if (saveHistory) {
+    history.push({ role: 'user', content: text });
+    try { sessionStorage.setItem('techmart_history', JSON.stringify(history)); } catch(e) {}
+  }
+  scrollToBottom();
+}
+
+function appendBotMessage(text, saveHistory = true) {
+  const row = document.createElement('div');
+  row.className = 'msg-row bot';
+  row.innerHTML = `
+    <div class="msg-avatar bot">T</div>
+    <div class="msg-content-wrapper">
+      <div class="msg-bubble">${formatMarkdown(text)}</div>
+      <div class="msg-time">${getTimeString()}</div>
+    </div>
+  `;
+  messagesWrapper.appendChild(row);
+  if (saveHistory) {
+    history.push({ role: 'agent', content: text });
+    try { sessionStorage.setItem('techmart_history', JSON.stringify(history)); } catch(e) {}
+  }
+  scrollToBottom();
+}
+
+function showTyping() {
+  typingIndicator.classList.add('active');
+  scrollToBottom();
+}
+
+function hideTyping() {
+  typingIndicator.classList.remove('active');
+}
+
+function scrollToBottom() {
+  requestAnimationFrame(() => {
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+  });
+}
+
+// ── SEND MESSAGE ────────────────────────────────────────────────────────────
+async function sendMessage(text) {
+  text = (text || userInput.value).trim();
+  if (!text || isBusy) return;
+
+  isBusy = true;
+  userInput.value = '';
+  autoResizeInput();
+  sendBtn.disabled = true;
+
+  appendUserMessage(text, true);
+  showTyping();
+
+  try {
+    let currentSessionId = sessionStorage.getItem('clara_session_id');
+    if (!currentSessionId) {
+      currentSessionId = 'sess_' + Math.random().toString(36).substring(2, 11);
+      sessionStorage.setItem('clara_session_id', currentSessionId);
+    }
+
+    const res = await fetch(`${CONFIG.apiUrl}/api/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: text, session_id: currentSessionId, history: history.slice(-10) })
+    });
+
+    if (!res.ok) throw new Error(`Server returned HTTP ${res.status}`);
+    const data = await res.json();
+    if (data.session_id) {
+      sessionStorage.setItem('clara_session_id', data.session_id);
+    }
+    const reply = data.reply || 'I could not retrieve an answer. Please try again.';
+
+    hideTyping();
+    appendBotMessage(reply, true);
+
+  } catch (err) {
+    console.error('[TechMart Chat Error]', err);
+    hideTyping();
+    appendBotMessage(`⚠️ **Connection Error:** Could not connect to the backend server at \`${CONFIG.apiUrl}\`. Please verify the server is running and try again.`, true);
+  }
+
+  isBusy = false;
+  sendBtn.disabled = false;
+  userInput.focus();
+}
+
+// ── NEW CHAT & SESSION CLEANUP ──────────────────────────────────────────────
+newChatBtn.addEventListener('click', () => {
+  const currentSessionId = sessionStorage.getItem('clara_session_id');
+  if (currentSessionId) {
+    fetch(`${CONFIG.apiUrl}/api/session/reset`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: currentSessionId })
+    }).catch(() => {});
+  }
+
+  // Generate clean session ID for new session
+  const newSessionId = 'sess_' + Math.random().toString(36).substring(2, 11);
+  sessionStorage.setItem('clara_session_id', newSessionId);
+
+  history = [];
+  cart = [];
+  try {
+    sessionStorage.removeItem('techmart_history');
+    sessionStorage.removeItem('techmart_cart');
+  } catch(e) {}
+  updateCartUi();
+
+  const hero = document.getElementById('welcome-hero');
+  messagesWrapper.innerHTML = '';
+  if (hero) {
+    hero.style.display = '';
+    messagesWrapper.appendChild(hero);
+  }
+  userInput.value = '';
+  userInput.focus();
+});
+
+// Delete memory session on tab/browser close
+window.addEventListener('beforeunload', () => {
+  const currentSessionId = sessionStorage.getItem('clara_session_id');
+  if (currentSessionId && navigator.sendBeacon) {
+    const blob = new Blob([JSON.stringify({ session_id: currentSessionId })], { type: 'application/json' });
+    navigator.sendBeacon(`${CONFIG.apiUrl}/api/session/reset`, blob);
+  }
+});
+
+// ── INPUT RESIZING & KEYBOARD ───────────────────────────────────────────────
+function autoResizeInput() {
+  userInput.style.height = 'auto';
+  userInput.style.height = Math.min(userInput.scrollHeight, 140) + 'px';
+}
+
+userInput.addEventListener('input', autoResizeInput);
+userInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+});
+
+sendBtn.addEventListener('click', () => sendMessage());
+
+// ── FORMATTING UTILITIES ────────────────────────────────────────────────────
+function escapeHtml(t) {
+  return (t || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+}
+
+function escapeForJs(str) {
+  return (str || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"');
+}
+
+function formatMarkdown(text) {
+  if (!text) return '';
+
+  let safe = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+  // Cart action button (Add to Cart with simple cart logo)
+  safe = safe.replace(/\[\[CART_BUTTON:(.*?)\]\]/g, function(match, jsonStr) {
+    let prod = {};
+    try {
+      const rawJson = jsonStr.replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+      prod = JSON.parse(rawJson);
+    } catch(e) {
+      prod = { brand: '', model: '' };
+    }
+    const serialized = encodeURIComponent(JSON.stringify(prod));
+    return `
+      <div class="cart-btn-wrap">
+        <button type="button" class="add-to-cart-btn" data-product="${serialized}" onclick="handleAddToCartClick(this)">
+          <span class="cart-btn-icon">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
+              <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
+            </svg>
+          </span>
+          <span class="cart-btn-text">Add to Cart</span>
+        </button>
+      </div>
+    `;
+  });
+
+  // Backward compatibility fallback for ORDER_BUTTON
+  safe = safe.replace(/\[\[ORDER_BUTTON:"(.*?[^\\])"\]\]/g, function(match, prodName) {
+    const unescaped = prodName.replace(/\\"/g, '"');
+    const prod = { model: unescaped };
+    const serialized = encodeURIComponent(JSON.stringify(prod));
+    return `
+      <div class="cart-btn-wrap">
+        <button type="button" class="add-to-cart-btn" data-product="${serialized}" onclick="handleAddToCartClick(this)">
+          <span class="cart-btn-icon">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
+              <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
+            </svg>
+          </span>
+          <span class="cart-btn-text">Add to Cart</span>
+        </button>
+      </div>
+    `;
+  });
+
+  // Dividers
+  safe = safe.replace(/^---$/gim, '<div class="chat-divider"></div>');
+
+  // Headings
+  safe = safe
+    .replace(/^###\s*(\d+\.)\s*(.*$)/gim, '<div class="product-title-heading"><span class="heading-num">$1</span> $2</div>')
+    .replace(/^### (.*$)/gim, '<div class="product-title-heading">$1</div>')
+    .replace(/^## (.*$)/gim, '<div class="section-title-heading">$1</div>')
+    .replace(/^# (.*$)/gim, '<div class="main-title-heading">$1</div>');
+
+  // Strikethrough ~~text~~
+  safe = safe.replace(/~~(.+?)~~/g, '<span class="price-strikethrough">$1</span>');
+
+  // Discount percentage tags (e.g. 6% OFF, 15% OFF)
+  safe = safe.replace(/(\b\d+%\s*OFF\b)/gi, '<span class="discount-pill">$1</span>');
+
+  // Bold emphasis **text**
+  safe = safe.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+
+  // Code inline `code`
+  safe = safe.replace(/`(.+?)`/g, '<code>$1</code>');
+
+  // Bullet items
+  safe = safe.replace(/^\s*[-•]\s+(.*$)/gim, function(match, content) {
+    if (content.toLowerCase().includes('why you should buy') || content.toLowerCase().includes('why this is for you')) {
+      return '<div class="why-buy-bubble">' + content + '</div>';
+    }
+    if (content.toLowerCase().includes('final discounted price') || content.toLowerCase().includes('final price')) {
+      return '<div class="bullet-row final-price-row">' + content + '</div>';
+    }
+    return '<div class="bullet-row">' + content + '</div>';
+  });
+
+  // Clean block-level line breaks so we don't get double spacing
+  safe = safe
+    .replace(/<\/div>\s*\n+/g, '</div>')
+    .replace(/\n+\s*<div/g, '<div')
+    .replace(/\n\n+/g, '<div class="msg-paragraph-gap"></div>')
+    .replace(/\n/g, '<br>');
+
+  return safe;
+}
+
+init();
+</script>
+</body>
+</html>
