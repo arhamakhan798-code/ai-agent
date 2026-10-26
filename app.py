@@ -42,8 +42,8 @@ SA_CREDS_FILE    = os.path.join(BASE_DIR, "techmart-database-a6718d22604c.json")
 GMAIL_TOKEN_FILE = os.path.join(BASE_DIR, "gmail_token.json")
 POLICY_FILE      = os.path.join(BASE_DIR, "policy.txt")
 CHROMA_PATH      = os.environ.get("CHROMA_PATH", os.path.join("/tmp" if os.environ.get("VERCEL") else BASE_DIR, "chroma_db"))
-SPREADSHEET_ID   = "15wQuB7ZcJBuEfODW82JyXDz9tM1XhB33DXl-nKDi2Z4"
-SENDER_EMAIL     = "arhamakhan798@gmail.com"
+SPREADSHEET_ID   = os.environ.get("SPREADSHEET_ID", "15wQuB7ZcJBuEfODW82JyXDz9tM1XhB33DXl-nKDi2Z4")
+SENDER_EMAIL     = os.environ.get("SENDER_EMAIL", "arhamakhan798@gmail.com")
 
 # Sheet tab worksheet IDs
 SHEET_PRODUCTS = 1648999330
@@ -68,6 +68,52 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 # ── FLASK SETUP ───────────────────────────────────────────────────────────────
 app = Flask(__name__)
 CORS(app, origins="*")
+
+# ── SECURITY: RATE-LIMITER FOR PASSKEY ATTEMPTS ──────────────────────────────
+# Tracks failed passkey attempts per (IP, order_number) to prevent brute-force.
+_passkey_attempts: dict[str, list] = {}  # key -> list of timestamps
+_passkey_lock = threading.Lock()
+PASSKEY_MAX_ATTEMPTS = 5       # max wrong attempts per window
+PASSKEY_WINDOW_SECONDS = 300   # 5-minute window
+
+def _check_passkey_rate_limit(ip: str, order_number: str) -> str | None:
+    """Returns an error string if rate-limited, else None."""
+    key = f"{ip}:{order_number.strip().upper()}"
+    now = time.time()
+    with _passkey_lock:
+        timestamps = _passkey_attempts.get(key, [])
+        # Prune old timestamps outside the window
+        timestamps = [t for t in timestamps if now - t < PASSKEY_WINDOW_SECONDS]
+        _passkey_attempts[key] = timestamps
+        if len(timestamps) >= PASSKEY_MAX_ATTEMPTS:
+            return (
+                "Too many incorrect passkey attempts. For security, please wait "
+                "a few minutes before trying again, or contact support."
+            )
+    return None
+
+def _record_passkey_failure(ip: str, order_number: str):
+    """Records a failed passkey attempt."""
+    key = f"{ip}:{order_number.strip().upper()}"
+    with _passkey_lock:
+        _passkey_attempts.setdefault(key, []).append(time.time())
+
+# ── SECURITY: INPUT SANITIZATION ─────────────────────────────────────────────
+_STRIP_HTML_RE = re.compile(r'<[^>]+>')
+_EMAIL_RE = re.compile(r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$')
+_PHONE_RE = re.compile(r'^[\+\d][\d\s\-()]{6,20}$')
+_IBAN_RE  = re.compile(r'^[A-Z0-9]{5,34}$', re.IGNORECASE)
+
+def sanitize_input(value: str, max_len: int = 500) -> str:
+    """Strips HTML tags, trims whitespace, and limits length to prevent injection."""
+    if not isinstance(value, str):
+        return ""
+    value = _STRIP_HTML_RE.sub('', value).strip()
+    return value[:max_len]
+
+def _scrub_passkeys_from_text(text: str) -> str:
+    """Removes any passkey values (SEC-XXXXX patterns) from text to prevent echo."""
+    return re.sub(r'\bSEC-[A-Z0-9]{4,10}\b', '***', text, flags=re.IGNORECASE)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1007,9 +1053,16 @@ If the provided data doesn't contain what the customer asked, never guess. Reply
 - If their needs are vague, ask one or two quick questions (budget, main use) first.
 
 # Orders
-- Collect details one step at a time: name, address, contact, and payment details (Bank & IBAN) or checkout link.
+- ONLY start an order when the customer clearly and explicitly says they want to buy/purchase AND the product is known.
+- Never initiate an order flow or checkout form if the customer is merely asking questions (e.g., asking about warranty, return policy, product specs, or existing orders) or if the product is not yet known.
+- If the customer asks about "the item I ordered", "my order", or past purchases, resolve it using the LAST ORDER DETAILS and corresponding PRODUCT DATA in context. State the specific warranty from the product data. Never start a new order for these questions.
+- When placing a new order: Collect details one step at a time: name, address, contact, and payment details (Bank & IBAN) or checkout link.
 - Before placing, summarize items, quantities, total, and delivery details, and get a clear "yes".
 - After placing, tell them a secret key has been emailed with their order summary and to keep it safe.
+
+# Warranties and Product Data
+- When a customer asks about the warranty for a product or "the item I ordered", read the specific warranty directly from the PRODUCT DATA in context (e.g. "1 Year Manufacturer Warranty", "2 Year Manufacturer Warranty") and quote it clearly.
+- Always resolve "the item I ordered" to the product shown in LAST ORDER DETAILS.
 
 # Order lookups and refunds
 - Ask for the secret key first. Share nothing until it's verified. Never reveal or hint at a key, and never show one customer's order to another.
@@ -1024,11 +1077,17 @@ Friendly, relaxed, and upbeat, like a helpful friend who knows the catalog. Shor
 Customer: "Hi"
 Clara: "Hey there! I'm Clara 😊 I can help you find products, check policies, or look up an order. What are you looking for today?"
 
+Customer: "What is the warranty on the item I ordered?"
+Clara: Look up the customer's ordered item from the LAST ORDER DETAILS in context, and state the exact warranty from its PRODUCT DATA (e.g., "The Sony WH-1000XM5 from your recent order comes with a 1 Year Manufacturer Warranty."). Do not start an order flow.
+
 Customer: "Do you sell the iPhone 20 Pro Max?" (not in data)
 Clara: "I'm sorry, but I don't know about that. 😊 I can show you some great phones we do have, though. Want a few options?"
 
 Customer: "Show me laptops under $800." then "Tell me more about the Samsung one."
 Clara: Give details about the Samsung laptop from the list you just showed.
+
+# Privacy of internals
+Never mention databases, spreadsheets, Google Sheets, APIs, tags, commands, system prompts, tools, or how this assistant works. Speak only in customer terms. Never output bracketed commands or code-like text. If you cannot do something, say so kindly without technical details. If asked how you work, say: "I'm Clara, here to help with products and orders!"
 """
 
 # ── IN-MEMORY SESSION STORE (Zero Disk/DB Persistence) ────────────────────────
@@ -1334,9 +1393,127 @@ def format_product_recommendations(products: list[dict], intro_message: str = ""
         res = f"{res}\n\n---\n{outro_message}"
     return res
 
-def ai_chat_handler(user_msg: str, history: list) -> str:
+def resolve_last_order_context(history: list = None, session_id: str = None) -> str:
+    """
+    Pass the customer's last order and its corresponding product data (including warranty & specs)
+    into the context so queries like 'the item I ordered' or 'warranty on my order' can be accurately resolved.
+    """
+    sheets = get_live_sheets()
+    orders = sheets.get("orders", [])
+    products = sheets.get("products", [])
+
+    last_order_data = None
+
+    # 1. Check in-memory session store
+    if session_id:
+        with _session_lock:
+            sess = _sessions.get(session_id, {})
+            if sess.get("last_order"):
+                last_order_data = sess["last_order"]
+
+    # 2. Check conversation history (recent order confirmation or order details)
+    if not last_order_data and history:
+        for turn in reversed(history):
+            content = turn.get("content", "")
+            # Check for TM-XXXXX order number
+            m = re.search(r'\b(TM-\d{4,8})\b', content, re.IGNORECASE)
+            if m:
+                target_num = m.group(1).upper()
+                for o in reversed(orders):
+                    if o.get("Order Number", "").strip().upper() == target_num:
+                        last_order_data = o
+                        break
+                if last_order_data:
+                    break
+
+            # Check for order confirmation product line
+            m_prod = re.search(r'-\s*\*\*Product:\*\*\s*([^\n]+)', content)
+            if m_prod:
+                prod_str = m_prod.group(1).strip()
+                last_order_data = {"Model Name": prod_str, "Product": prod_str}
+                break
+
+    # 3. DO NOT fall back to the last order in the entire system — that could be
+    #    another customer's order, which would be a privacy violation.
+    #    Only use orders that were placed in THIS session or referenced by order number
+    #    in the conversation history.
+
+    if not last_order_data:
+        return ""
+
+    prod_name = (
+        last_order_data.get("Model Name") or
+        last_order_data.get("product_name") or
+        last_order_data.get("Product") or
+        ""
+    ).strip()
+    brand_name = (
+        last_order_data.get("Order Brand") or
+        last_order_data.get("brand") or
+        last_order_data.get("Brand") or
+        ""
+    ).strip()
+    order_num = (
+        last_order_data.get("Order Number") or
+        last_order_data.get("order_number") or
+        ""
+    ).strip()
+    cust_name = (
+        last_order_data.get("Customer Name") or
+        last_order_data.get("customer_name") or
+        "Valued Customer"
+    ).strip()
+
+    # Match product in inventory to read its exact warranty & specs from product data
+    matched_prod = None
+    if prod_name:
+        for p in products:
+            p_model = p.get("Model Name", "").strip().lower()
+            p_sku = p.get("SKU", "").strip().lower()
+            if p_model == prod_name.lower() or p_sku == prod_name.lower():
+                matched_prod = p
+                break
+            if not matched_prod and prod_name.lower() in p_model:
+                matched_prod = p
+    if not matched_prod and brand_name:
+        for p in products:
+            if p.get("Brand", "").strip().lower() == brand_name.lower():
+                matched_prod = p
+                break
+
+    lines = [
+        "LAST ORDER DETAILS (CUSTOMER'S RECENT / EXISTING ORDER):",
+        f"- Order Number: {order_num}" if order_num else "- Order Status: Verified Recent Order",
+        f"- Customer Name: {cust_name}",
+        f"- Item Ordered: {brand_name} {prod_name}".strip()
+    ]
+
+    if matched_prod:
+        lines.extend([
+            f"\nPRODUCT DATA FOR ORDERED ITEM ({matched_prod.get('Brand')} {matched_prod.get('Model Name')}):",
+            f"- Brand: {matched_prod.get('Brand')}",
+            f"- Model Name: {matched_prod.get('Model Name')}",
+            f"- Category: {matched_prod.get('Category')}",
+            f"- Price: {matched_prod.get('Price (USD)')}",
+            f"- Warranty: {matched_prod.get('Warranty', '1 Year Manufacturer Warranty')}",
+            f"- Key Specifications: {matched_prod.get('Key Specifications', 'Standard specifications')}",
+            f"- Stock Status: {matched_prod.get('Stock', 'Available')} in stock"
+        ])
+    elif prod_name:
+        lines.extend([
+            f"\nPRODUCT DATA FOR ORDERED ITEM ({prod_name}):",
+            f"- Product: {prod_name}",
+            "- Warranty: 1 Year Manufacturer Warranty (Standard TechMart warranty covering hardware defects)"
+        ])
+
+    return "\n".join(lines)
+
+def ai_chat_handler(user_msg: str, history: list, session_id: str = None) -> str:
     """Direct intelligent AI pipeline with live sheets, ChromaDB policy RAG, action detection, and instant failover."""
     msg_lower = user_msg.lower().strip()
+
+    # Pass the last order into context so queries like "the item I ordered" can be resolved
+    order_ctx_str = resolve_last_order_context(history=history, session_id=session_id)
 
     # 1. Action Check: View / Track Order
     order_match = re.search(r'\b(TM-\d{5,8})\b', user_msg, re.IGNORECASE)
@@ -1410,39 +1587,64 @@ def ai_chat_handler(user_msg: str, history: list) -> str:
             )
 
     # 3. Action Check: Interactive Checkout / Order Placement Request
-    wants_order_form = (
-        any(p in msg_lower for p in [
-            "purchase", "place order", "want to buy", "want this", "buy this", "order this", 
-            "order now", "buy now", "checkout", "place an order", "how to buy", "how can i buy", 
-            "i want to purchase", "i will take this", "i'll buy", "i'll take", "buy it", "order it"
-        ]) or (
-            any(w in msg_lower for w in ["buy", "order"]) and not any(w in msg_lower for w in [
-                "track", "status", "cancel", "refund", "return", "recommend", "laptop", "phone", "earpod", "headphone"
-            ])
+    # CRITICAL RULE: Only start an order when the customer CLEARLY says they want to buy AND the product is known.
+    # Questions about warranty, policies, returns, specs, or previous orders must NEVER start an order.
+    is_question_or_inquiry = any(q in msg_lower for q in [
+        "warranty", "guarantee", "policy", "policies", "return", "refund", "track", "status", 
+        "where is", "how long", "what is", "how does", "tell me about", "is there", "do you have",
+        "can i return", "item i ordered", "ordered item", "past order", "previous order", "which",
+        "can you check", "check my", "what's the", "whats the", "how to buy", "can i buy"
+    ])
+
+    explicit_buy_intent = (
+        not is_question_or_inquiry and (
+            any(p in msg_lower for p in [
+                "purchase", "place order", "want to buy", "want this", "buy this", "order this", 
+                "order now", "buy now", "checkout", "place an order", "i want to purchase", 
+                "i will take this", "i'll buy", "i'll take", "buy it", "order it"
+            ]) or (
+                "buy" in msg_lower and not any(w in msg_lower for w in [
+                    "why", "how to buy", "can i buy", "where to buy", "should i buy", "worth buying", "did i buy"
+                ])
+            )
         )
     )
 
-    if wants_order_form:
+    if explicit_buy_intent:
         target_prod_name = ""
         cand_prods = search_products_data(user_msg, limit=1)
         if cand_prods and cand_prods[0].get("_score", 0) >= 15:
             target_prod_name = f"{cand_prods[0]['Brand']} {cand_prods[0]['Model Name']}"
         elif history:
             for h in reversed(history):
-                if h.get("role") == "agent":
-                    m = re.search(r'### \d+\.\s*([^\n]+)', h.get("content", ""))
+                content_h = h.get("content", "")
+                if h.get("role") in ["agent", "assistant"]:
+                    m = re.search(r'### \d+\.\s*([^\n]+)', content_h)
                     if m:
                         target_prod_name = m.group(1).strip()
                         break
-        
-        prod_json = json.dumps({"product": target_prod_name})
-        prod_mention = f" for **{target_prod_name}**" if target_prod_name else ""
-        return (
-            f"I'd be thrilled to help you place your order{prod_mention}! 🎉\n\n"
-            f"Please review and complete your delivery details in the checkout form below. "
-            f"Once submitted, your order will be instantly saved to our live database, and your confirmation with secret tracking passkey will be emailed to you.\n\n"
-            f"[[ORDER_FORM:{prod_json}]]"
-        )
+                    cb_m = re.search(r'\[\[CART_BUTTON:(\{.*?\})\]\]', content_h)
+                    if cb_m:
+                        try:
+                            cb_data = json.loads(cb_m.group(1).replace("&quot;", '"').replace("&amp;", '&'))
+                            brand_part = cb_data.get("brand", "").strip()
+                            model_part = cb_data.get("model", "").strip()
+                            target_prod_name = f"{brand_part} {model_part}".strip()
+                            if target_prod_name:
+                                break
+                        except Exception:
+                            pass
+
+        # In code: if the tag's product is empty, don't open the form.
+        # Only start an order when the customer clearly says they want to buy AND the product is known.
+        if target_prod_name:
+            prod_json = json.dumps({"product": target_prod_name})
+            return (
+                f"I'd be thrilled to help you place your order for **{target_prod_name}**! 🎉\n\n"
+                f"Please review and complete your delivery details in the checkout form below. "
+                f"Once submitted, your order will be instantly saved to our live database, and your confirmation with secret tracking passkey will be emailed to you.\n\n"
+                f"[[ORDER_FORM:{prod_json}]]"
+            )
 
     # 4. Action Check: Place Order Detection (if user directly typed email and order fields)
     if "@" in user_msg and any(w in msg_lower for w in ["order", "buy", "name:", "phone:", "address:"]):
@@ -1464,6 +1666,17 @@ def ai_chat_handler(user_msg: str, history: list) -> str:
                 product_name_or_sku=prod_name
             )
             if order_res.get("success"):
+                # Save to session so "the item I ordered" resolves correctly
+                if session_id:
+                    with _session_lock:
+                        sess = _sessions.get(session_id)
+                        if sess is not None:
+                            sess["last_order"] = {
+                                "Order Number": order_res.get("order_number", ""),
+                                "Model Name": order_res.get("product_name", ""),
+                                "Brand": order_res.get("brand", ""),
+                                "customer_name": "Valued Customer",
+                            }
                 return (
                     f"### 🎉 Order Placed Successfully!\n\n"
                     f"- **Order Number:** `{order_res['order_number']}`\n"
@@ -1478,19 +1691,41 @@ def ai_chat_handler(user_msg: str, history: list) -> str:
                     f"Please keep your secret passkey safe, as you will need it to view your order or request a refund!"
                 )
 
-    # 5. Action Check: Policy Inquiries (answer strictly what was asked using official policy data)
-    if any(k in msg_lower for k in ["policy", "return", "shipping", "warranty", "exchange", "refund policy"]):
+    # 5. Action Check: Policy & Warranty Inquiries (answer strictly using store policy & product warranty data)
+    if any(k in msg_lower for k in ["policy", "return", "shipping", "warranty", "exchange", "refund policy", "guarantee"]):
         policy_ctx = query_policy(user_msg, n=2)
+        policy_sections = []
         if policy_ctx:
-            if GROQ_API_KEY:
-                policy_ans = call_groq_llm(
-                    user_msg,
-                    context=f"TECHMART OFFICIAL STORE POLICIES:\n{policy_ctx}",
-                    history=history
-                )
-                if policy_ans:
-                    return policy_ans
-            return policy_ctx
+            policy_sections.append(f"TECHMART OFFICIAL STORE POLICIES:\n{policy_ctx}")
+        if order_ctx_str:
+            policy_sections.append(order_ctx_str)
+
+        cand_prods = search_products_data(user_msg, limit=2)
+        if cand_prods and cand_prods[0].get("_score", 0) >= 15:
+            policy_sections.append(f"RELEVANT PRODUCT DATA FROM CATALOG:\n{json.dumps(cand_prods[:2], indent=1)}")
+
+        full_policy_context = "\n\n".join(policy_sections)
+        if GROQ_API_KEY:
+            policy_ans = call_groq_llm(
+                user_msg,
+                context=full_policy_context,
+                history=history
+            )
+            if policy_ans:
+                return policy_ans
+        if _model:
+            try:
+                chat = _model.start_chat()
+                p_prompt = f"{full_policy_context}\n\nCustomer: {user_msg}\nRespond as Clara concisely and factually using only the store and product data provided."
+                resp = chat.send_message(p_prompt)
+                if resp and resp.text:
+                    return resp.text.strip()
+            except Exception as e:
+                print(f"[Gemini Policy Call Error] {e}")
+
+        if order_ctx_str and "warranty" in msg_lower:
+            return f"Here is the official warranty and order information from our store data:\n\n{order_ctx_str}\n\n{policy_ctx}"
+        return policy_ctx
 
     # 6. Conversation Context & Follow-Up Parsing from History
     ongoing_categories = []
@@ -1699,6 +1934,9 @@ def ai_chat_handler(user_msg: str, history: list) -> str:
         context_sections.append(f"POLICIES:\n{policy_ctx}")
     if relevant_products:
         context_sections.append(f"RELEVANT PRODUCTS:\n{json.dumps(relevant_products[:3], indent=1)}")
+    # Include last order + product warranty context for queries about ordered items
+    if order_ctx_str:
+        context_sections.append(order_ctx_str)
     full_context_str = "\n\n".join(context_sections)
 
     # Priority 1: Groq AI (Ultra-fast, high-quality responses strictly from provided data)
@@ -1754,7 +1992,7 @@ def route_index():
 @app.route("/api/chat", methods=["POST"])
 def route_chat():
     body = request.get_json(silent=True) or {}
-    message = body.get("message", "").strip()
+    message = sanitize_input(body.get("message", ""), max_len=2000)
     session_id = body.get("session_id", "").strip()
     client_history = body.get("history", [])
 
@@ -1770,12 +2008,19 @@ def route_chat():
             session_history.extend(client_history[-10:])
 
     # 2. Execute Clara AI handler (query rewriting, live Google Sheets / ChromaDB RAG, and Groq LLM)
-    reply = ai_chat_handler(message, session_history)
+    reply = ai_chat_handler(message, session_history, session_id=session_id)
 
-    # 3. Append user message & assistant reply to session-only history
+    # 3. Append user message & assistant reply to session-only history, trimmed to last 10 turns (20 messages)
     with _session_lock:
         session_history.append({"role": "user", "content": message})
         session_history.append({"role": "assistant", "content": reply})
+        # Trim to last 10 turns (20 messages: 10 user + 10 assistant) to cap memory usage
+        max_messages = 20
+        if len(session_history) > max_messages:
+            del session_history[:len(session_history) - max_messages]
+
+    # 4. Scrub any passkey values from the reply so they are never echoed to the client
+    reply = _scrub_passkeys_from_text(reply)
 
     return jsonify({"reply": reply, "session_id": session_id})
 
@@ -1792,13 +2037,13 @@ def route_session_reset():
 def route_order_place():
     body = request.get_json(silent=True) or {}
     
-    # Normalize aliases from frontend form or external calls
-    c_name = (body.get("customer_name") or body.get("name") or "").strip()
-    c_phone = (body.get("contact_number") or body.get("phone") or "").strip()
-    c_email = (body.get("email") or "").strip()
-    c_bank = (body.get("bank") or body.get("bank_name") or "").strip()
-    c_iban = (body.get("iban") or "").strip()
-    c_address = (body.get("customer_address") or body.get("address") or "").strip()
+    # Sanitize all text inputs (strip HTML, limit length)
+    c_name = sanitize_input(body.get("customer_name") or body.get("name") or "", max_len=200)
+    c_phone = sanitize_input(body.get("contact_number") or body.get("phone") or "", max_len=25)
+    c_email = sanitize_input(body.get("email") or "", max_len=254)
+    c_bank = sanitize_input(body.get("bank") or body.get("bank_name") or "", max_len=200)
+    c_iban = sanitize_input(body.get("iban") or "", max_len=34)
+    c_address = sanitize_input(body.get("customer_address") or body.get("address") or "", max_len=500)
 
     missing = []
     if not c_name: missing.append("customer_name")
@@ -1811,8 +2056,16 @@ def route_order_place():
     if missing:
         return jsonify({"error": f"Missing required fields: {', '.join(missing)}"}), 400
 
+    # Validate formats
+    if not _EMAIL_RE.match(c_email):
+        return jsonify({"error": "Invalid email address format."}), 400
+    if not _PHONE_RE.match(c_phone):
+        return jsonify({"error": "Invalid phone number format."}), 400
+    if not _IBAN_RE.match(c_iban.replace(" ", "")):
+        return jsonify({"error": "Invalid IBAN format."}), 400
+
     items = body.get("items", [])
-    single_prod = (body.get("product") or "").strip()
+    single_prod = sanitize_input(body.get("product") or "", max_len=300)
     if not items and not single_prod:
         return jsonify({"error": "No items provided in cart to place order."}), 400
 
@@ -1828,35 +2081,64 @@ def route_order_place():
     )
     if "error" in res:
         return jsonify(res), 400
+
+    # Save last order to session so "the item I ordered" works within the same session
+    session_id = (body.get("session_id") or "").strip()
+    if session_id and res.get("success"):
+        with _session_lock:
+            sess = _sessions.get(session_id)
+            if sess is not None:
+                sess["last_order"] = {
+                    "Order Number": res.get("order_number", ""),
+                    "Model Name": res.get("product_name", ""),
+                    "Brand": res.get("brand", ""),
+                    "customer_name": c_name,
+                }
+                sess["last_active"] = time.time()
+
     return jsonify(res)
 
 @app.route("/api/order/lookup", methods=["POST"])
 def route_order_lookup():
     body = request.get_json(silent=True) or {}
-    order_num = body.get("order_number", "").strip()
-    passkey = body.get("passkey", "").strip()
+    order_num = sanitize_input(body.get("order_number", ""), max_len=20)
+    passkey = sanitize_input(body.get("passkey", ""), max_len=30)
     if not order_num or not passkey:
         return jsonify({"error": "Both 'order_number' and 'passkey' are required."}), 400
 
+    # Rate-limit passkey attempts
+    client_ip = request.remote_addr or "unknown"
+    rate_err = _check_passkey_rate_limit(client_ip, order_num)
+    if rate_err:
+        return jsonify({"error": rate_err}), 429
+
     res = view_order_service(order_num, passkey)
     if "error" in res:
+        _record_passkey_failure(client_ip, order_num)
         return jsonify(res), 403
     return jsonify(res)
 
 @app.route("/api/order/refund", methods=["POST"])
 def route_order_refund():
     body = request.get_json(silent=True) or {}
-    order_num = body.get("order_number", "").strip()
-    passkey = body.get("passkey", "").strip()
+    order_num = sanitize_input(body.get("order_number", ""), max_len=20)
+    passkey = sanitize_input(body.get("passkey", ""), max_len=30)
     days = int(body.get("days_since_purchase", 5))
     orig = bool(body.get("is_original_condition", True))
-    reason = body.get("reason", "Customer return request")
+    reason = sanitize_input(body.get("reason", "Customer return request"), max_len=500)
 
     if not order_num or not passkey:
         return jsonify({"error": "Both 'order_number' and 'passkey' are required."}), 400
 
+    # Rate-limit passkey attempts
+    client_ip = request.remote_addr or "unknown"
+    rate_err = _check_passkey_rate_limit(client_ip, order_num)
+    if rate_err:
+        return jsonify({"error": rate_err}), 429
+
     res = request_refund_service(order_num, passkey, days, orig, reason)
     if "error" in res:
+        _record_passkey_failure(client_ip, order_num)
         return jsonify(res), 400
     return jsonify(res)
 

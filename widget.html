@@ -3,72 +3,71 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TechMart AI — Concierge & Store Assistant</title>
+<title>Clara — TechMart Shopping Assistant</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600;1,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 /* ── RESET ── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-/* ── NORMAL FONT FOR NUMBERS (0-9, $, %) VIA UNICODE-RANGE ── */
-@font-face {
-  font-family: 'NormalNumbers';
-  src: local('Inter'), local('Segoe UI'), local('Arial'), sans-serif;
-  unicode-range: U+0030-0039, U+0024, U+0025; /* Digits 0-9, $, % */
-}
-
 :root {
-  --font-serif: 'NormalNumbers', 'Cormorant Garamond', Garamond, 'Times New Roman', serif;
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --transition-smooth: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-serif: var(--font-sans);
+  --font-flareserif: var(--font-sans);
+  --transition-smooth: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* ── DARK THEME (HIGH CONTRAST) ── */
+/* ── DARK THEME (HIGH CONTRAST WCAG AA) ── */
 body.tm-dark {
-  --bg-main: #090a0d;
-  --bg-surface: #111317;
-  --bg-card: rgba(22, 25, 30, 0.85);
-  --border-subtle: rgba(201, 169, 110, 0.2);
+  --bg-main: #090b0e;
+  --bg-surface: #11141a;
+  --bg-card: rgba(18, 22, 29, 0.92);
+  --border-subtle: rgba(201, 169, 110, 0.25);
   --border-focus: #c9a96e;
-  --text-main: #f9fafb;
-  --text-muted: #a1a1aa;
-  --user-bubble: #1e232a;
-  --user-border: rgba(201, 169, 110, 0.22);
-  --agent-bubble: #13161a;
-  --agent-border: rgba(201, 169, 110, 0.24);
-  --input-bg: rgba(18, 21, 25, 0.95);
-  --input-border: rgba(201, 169, 110, 0.3);
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;           /* High contrast WCAG AA slate */
+  --header-sub-color: #cbd5e1;     /* Clearly legible header subtitle */
+  --time-color: #94a3b8;           /* High contrast timestamp */
+  --user-bubble: #1e293b;          /* Distinct, sleek slate user bubble */
+  --user-border: rgba(201, 169, 110, 0.35);
+  --agent-bubble: #12151c;
+  --agent-border: rgba(255, 255, 255, 0.1);
+  --input-bg: rgba(17, 21, 28, 0.95);
+  --input-border: rgba(201, 169, 110, 0.35);
   --gold-primary: #c9a96e;
-  --gold-bright: #e8c687;
+  --gold-bright: #f3dfb5;
   --gold-dark: #9e7b3c;
-  --gold-glow: rgba(201, 169, 110, 0.3);
+  --gold-glow: rgba(201, 169, 110, 0.28);
   --gold-tag: #d4af37;
   --wave-opacity: 0.85;
-  --bubble-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+  --bubble-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
 }
 
 /* ── LIGHT THEME (SPECIALLY TUNED FOR BRIGHT SCREENS & ACCESSIBILITY) ── */
 body.tm-light {
-  --bg-main: #f4f1e8;
-  --bg-surface: #e9e3d3;
+  --bg-main: #f8fafc;
+  --bg-surface: #ffffff;
   --bg-card: #ffffff;
-  --border-subtle: #cfc5b0;
-  --border-focus: #854d0e;
-  --text-main: #020617;          /* Ultra dark deep slate for maximum bright-screen legibility */
-  --text-muted: #334155;         /* Crisp high contrast slate */
-  --user-bubble: #dfd5c0;        /* High-contrast warm sand */
-  --user-border: #bca98a;
-  --agent-bubble: #ffffff;       /* Pure white card */
-  --agent-border: #cbd5e1;       /* Solid clear border */
+  --border-subtle: #e2e8f0;
+  --border-focus: #925c15;
+  --text-main: #0f172a;
+  --text-muted: #475569;           /* High contrast WCAG AA slate */
+  --header-sub-color: #334155;     /* Clear dark slate */
+  --time-color: #64748b;           /* High contrast timestamp */
+  --user-bubble: #f1f5f9;          /* Distinct, sleek user bubble */
+  --user-border: #cbd5e1;
+  --agent-bubble: #ffffff;
+  --agent-border: #e2e8f0;
   --input-bg: #ffffff;
-  --input-border: #94a3b8;
-  --gold-primary: #854d0e;       /* Deep rich bronze gold - high contrast on bright white */
-  --gold-bright: #713f12;
-  --gold-dark: #582a08;
-  --gold-glow: rgba(133, 77, 14, 0.2);
-  --gold-tag: #854d0e;
-  --wave-opacity: 0.5;
-  --bubble-shadow: 0 4px 18px rgba(0, 0, 0, 0.08);
+  --input-border: #cbd5e1;
+  --gold-primary: #925c15;
+  --gold-bright: #78350f;
+  --gold-dark: #5b2808;
+  --gold-glow: rgba(146, 92, 21, 0.18);
+  --gold-tag: #925c15;
+  --wave-opacity: 0.35;
+  --bubble-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
 }
 
 html, body {
@@ -147,8 +146,8 @@ body.tm-light .glow-2 {
 
 /* ── HEADER NAVIGATION ── */
 .app-header {
-  height: 68px;
-  padding: 0 28px;
+  height: 64px;
+  padding: 0 24px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -163,99 +162,81 @@ body.tm-light .glow-2 {
 .brand-section {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
 }
 
 .brand-logo {
-  width: 42px;
-  height: 42px;
-  border-radius: 10px;
-  background: linear-gradient(135deg, #16181b, #0d0e10);
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #1e2430, #0f131a);
   border: 1.5px solid var(--gold-primary);
   display: flex;
   align-items: center;
   justify-content: center;
   box-shadow: 0 4px 16px var(--gold-glow);
+  flex-shrink: 0;
 }
 body.tm-light .brand-logo {
-  background: linear-gradient(135deg, #ffffff, #ece4d4);
+  background: linear-gradient(135deg, #ffffff, #f1f5f9);
   border-color: var(--gold-primary);
 }
 
 .brand-logo-text {
-  font-family: var(--font-flareserif);
-  font-weight: 700;
-  font-size: 22px;
+  font-family: var(--font-sans);
+  font-weight: 800;
+  font-size: 20px;
   color: var(--gold-primary);
+  line-height: 1;
 }
 
 .brand-text h1 {
-  font-family: var(--font-flareserif);
+  font-family: var(--font-sans);
   font-size: 17px;
   font-weight: 700;
-  letter-spacing: 0.02em;
+  letter-spacing: -0.01em;
   display: flex;
   align-items: center;
   gap: 8px;
   color: var(--text-main);
+  line-height: 1.2;
 }
 
 .brand-badge {
   font-family: var(--font-sans);
-  font-size: 10px;
-  padding: 2px 7px;
+  font-size: 11px;
+  padding: 2px 8px;
   background: rgba(201, 169, 110, 0.18);
   border: 1px solid var(--gold-primary);
   color: var(--gold-primary);
   border-radius: 20px;
   text-transform: uppercase;
   font-weight: 700;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.05em;
 }
 
 .brand-text p {
-  font-size: 12px;
-  color: var(--text-muted);
+  font-size: 13px;
+  color: var(--header-sub-color);
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-top: 2px;
+  margin-top: 3px;
   font-weight: 500;
 }
 
 .status-dot {
-  width: 7.5px;
-  height: 7.5px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   background: #10b981;
   box-shadow: 0 0 8px #10b981;
+  flex-shrink: 0;
 }
 
-/* Header Live Chips */
+/* Header Live Chips (Hidden to keep header minimal per customer requirements) */
 .header-chips {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-@media (max-width: 860px) {
-  .header-chips { display: none; }
-}
-
-.chip-item {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 6px 14px;
-  background: var(--bg-card);
-  border: 1px solid var(--border-subtle);
-  border-radius: 30px;
-  font-size: 12px;
-  color: var(--text-muted);
-  font-weight: 500;
-}
-.chip-item strong {
-  color: var(--gold-primary);
-  font-weight: 700;
+  display: none !important;
 }
 
 /* Header Actions */
@@ -447,57 +428,62 @@ body.tm-light .hero-title {
   flex-direction: column;
 }
 
-/* Core Conversation Bubble: Cormorant Garamond with Normal Modern Numbers */
+/* Core Conversation Bubble: Clean Sans-Serif Inter, 1.55 Line-Height */
 .msg-bubble {
-  font-family: var(--font-serif);
-  font-weight: 500;
+  font-family: var(--font-sans);
+  font-weight: 400;
   font-style: normal;
-  letter-spacing: 0.01em;
-  padding: 16px 22px;
-  border-radius: 18px;
+  letter-spacing: -0.01em;
+  padding: 14px 18px;
+  border-radius: 16px;
   position: relative;
   word-break: break-word;
   box-shadow: var(--bubble-shadow);
-  font-variant-numeric: lining-nums tabular-nums;
-  -webkit-font-feature-settings: "lnum" 1, "tnum" 1;
-  font-feature-settings: "lnum" 1, "tnum" 1;
+  line-height: 1.55;
+  font-size: 15px;
 }
 
-/* AI Responses: Desktop 17px, Mobile 16px, Line Height 1.6, Normal Style */
+/* AI Responses: Clean Sans-serif, High contrast, 1.55 line height */
 .msg-row.bot .msg-bubble {
-  font-size: 17px;
-  line-height: 1.6;
+  font-size: 15px;
+  line-height: 1.55;
   font-style: normal;
   background: var(--agent-bubble);
-  border: 1.5px solid var(--agent-border);
+  border: 1px solid var(--agent-border);
   border-top-left-radius: 4px;
   color: var(--text-main);
 }
 
-/* User Messages: Desktop 17px, Mobile 16px, Line Height 1.5, Normal Style */
+/* User Messages: Distinct, sleek bubble */
 .msg-row.user .msg-bubble {
-  font-size: 17px;
+  font-size: 15px;
   line-height: 1.5;
   font-style: normal;
   background: var(--user-bubble);
-  border: 1.5px solid var(--user-border);
+  border: 1px solid var(--user-border);
   border-top-right-radius: 4px;
   color: var(--text-main);
 }
 
-/* Headings in Responses: Bold 700, 24px */
+/* Headings in Responses: Clean bold sans-serif */
 .response-heading,
 .msg-bubble h1,
 .msg-bubble h2,
 .msg-bubble h3 {
-  font-family: var(--font-serif);
-  font-size: 24px;
+  font-family: var(--font-sans);
+  font-size: 18px;
   font-weight: 700;
   font-style: normal;
-  color: var(--gold-primary);
-  margin: 12px 0 6px 0;
+  color: var(--gold-bright);
+  margin: 14px 0 6px 0;
   line-height: 1.35;
   display: block;
+}
+body.tm-light .response-heading,
+body.tm-light .msg-bubble h1,
+body.tm-light .msg-bubble h2,
+body.tm-light .msg-bubble h3 {
+  color: var(--gold-primary);
 }
 
 /* All strong/bold elements inside conversation */
@@ -512,23 +498,26 @@ body.tm-light .msg-bubble strong {
   color: #020617;
 }
 
-/* Product title headings: Bold 700, 22px */
+/* Product title headings: Clean Bold Sans-Serif */
 .product-title-heading {
-  font-family: var(--font-serif);
-  font-size: 22px;
+  font-family: var(--font-sans);
+  font-size: 17px;
   font-weight: 700;
   font-style: normal;
   color: var(--gold-bright);
-  margin: 16px 0 8px 0;
+  margin: 14px 0 6px 0;
   padding-bottom: 4px;
   border-bottom: 1px solid var(--border-subtle);
   display: block;
 }
+body.tm-light .product-title-heading {
+  color: var(--gold-primary);
+}
 
 .section-title-heading,
 .main-title-heading {
-  font-family: var(--font-serif);
-  font-size: 24px;
+  font-family: var(--font-sans);
+  font-size: 18px;
   font-weight: 700;
   font-style: normal;
   color: var(--gold-primary);
@@ -890,15 +879,16 @@ body.tm-light .order-details-grid {
   color: var(--gold-tag);
 }
 
-/* Small timestamps / labels: 12px */
+/* Small timestamps / labels: High contrast 12px */
 .msg-time {
   font-family: var(--font-sans);
   font-size: 12px;
-  color: var(--text-muted);
+  color: var(--time-color);
   margin-top: 5px;
   padding: 0 4px;
   font-weight: 500;
   font-style: normal;
+  letter-spacing: 0.02em;
 }
 .msg-row.user .msg-time {
   text-align: right;
@@ -968,16 +958,16 @@ body.tm-light .order-details-grid {
   box-shadow: 0 8px 36px var(--gold-glow);
 }
 
-/* Input Text: Cormorant Garamond, Normal, Regular */
+/* Input Text: Clean Inter, 15px */
 .chat-input {
   flex: 1;
   background: transparent;
   border: none;
   outline: none;
   color: var(--text-main);
-  font-family: var(--font-serif);
-  font-size: 17px;
-  font-weight: 500;
+  font-family: var(--font-sans);
+  font-size: 15px;
+  font-weight: 400;
   font-style: normal;
   line-height: 1.5;
   resize: none;
@@ -987,9 +977,9 @@ body.tm-light .order-details-grid {
 }
 /* Placeholder text */
 .chat-input::placeholder {
-  font-family: var(--font-serif);
-  font-size: 16px;
-  font-weight: 500;
+  font-family: var(--font-sans);
+  font-size: 15px;
+  font-weight: 400;
   font-style: normal;
   color: var(--text-muted);
 }
@@ -1011,13 +1001,16 @@ body.tm-light .order-details-grid {
 body.tm-light .send-btn {
   color: #ffffff;
 }
-.send-btn:hover:not(:disabled) {
+.send-btn:not(:disabled):hover {
   transform: scale(1.05);
   box-shadow: 0 4px 16px var(--gold-glow);
 }
 .send-btn:disabled {
-  opacity: 0.4;
+  opacity: 0.35;
   cursor: not-allowed;
+  filter: grayscale(0.6);
+  transform: none;
+  box-shadow: none;
 }
 
 /* Small label: 12px */
@@ -1416,19 +1409,116 @@ body.tm-light .modal-submit-btn {
   font-size: 13.5px;
 }
 
-/* Mobile Responsiveness */
+/* ── INLINE CHAT ORDER CARD ── */
+.chat-order-card {
+  background: var(--bg-card);
+  border: 1.5px solid var(--gold-primary);
+  border-radius: 16px;
+  padding: 20px 22px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+  margin: 6px 0;
+  width: 100%;
+}
+.chat-order-card-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.chat-order-card-icon {
+  font-size: 22px;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: rgba(201, 169, 110, 0.15);
+  border: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.chat-order-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text-main);
+  margin-bottom: 2px;
+}
+.chat-order-sub {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.chat-order-product-badge {
+  background: rgba(201, 169, 110, 0.12);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 8px 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  font-size: 14px;
+}
+.chat-order-product-badge .badge-label {
+  color: var(--text-muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+.chat-order-product-badge .badge-value {
+  color: var(--gold-bright);
+}
+body.tm-light .chat-order-product-badge .badge-value {
+  color: var(--gold-primary);
+}
+
+/* ── ERROR STATE CARD ── */
+.chat-error-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1.5px solid rgba(239, 68, 68, 0.35);
+  border-radius: 14px;
+  padding: 14px 18px;
+  color: var(--text-main);
+  margin: 4px 0;
+}
+.chat-error-icon {
+  font-size: 20px;
+  flex-shrink: 0;
+}
+.chat-error-body strong {
+  display: block;
+  font-size: 14.5px;
+  color: #f87171;
+  margin-bottom: 3px;
+}
+.chat-error-body p {
+  font-size: 13.5px;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+/* ── MOBILE RESPONSIVENESS & TOUCH TARGETS ── */
 @media (max-width: 768px) {
-  .app-header { padding: 0 16px; }
-  .chat-container { padding: 16px 12px; }
+  .app-header { height: 58px; padding: 0 16px; }
+  .brand-logo { width: 36px; height: 36px; }
+  .brand-logo-text { font-size: 18px; }
+  .brand-text h1 { font-size: 15px; }
+  .brand-badge { display: none; }
+  .chat-container { padding: 12px 10px; }
   .msg-content-wrapper { max-width: 90%; }
-  .msg-row.bot .msg-bubble { font-size: 15.5px; }
-  .msg-row.user .msg-bubble { font-size: 15.5px; }
-  .response-heading, .msg-bubble h1, .msg-bubble h2, .msg-bubble h3 { font-size: 20px; }
-  .msg-bubble code { font-size: 13.5px; }
-  .chat-input { font-size: 16px; }
+  .msg-row.bot .msg-bubble { font-size: 14.5px; }
+  .msg-row.user .msg-bubble { font-size: 14.5px; }
+  .response-heading, .msg-bubble h1, .msg-bubble h2, .msg-bubble h3 { font-size: 17px; }
+  .msg-bubble code { font-size: 13px; }
+  .chat-input { font-size: 16px; } /* Prevents iOS auto-zoom */
   .chat-input::placeholder { font-size: 14px; }
-  .checkout-modal-card { max-height: 95vh; }
+  .checkout-modal-card { max-height: 95vh; width: 95vw; }
   .modal-body { padding: 16px; }
+  .chat-order-card { padding: 16px 14px; }
+  .form-row-2col { grid-template-columns: 1fr; gap: 8px; }
+  .prompt-pill { padding: 8px 12px; font-size: 12.5px; }
 }
 </style>
 </head>
@@ -1462,35 +1552,19 @@ body.tm-light .modal-submit-btn {
   <!-- TOP HEADER -->
   <header class="app-header">
     <div class="brand-section">
-      <div class="brand-logo">
-        <span class="brand-logo-text">T</span>
+      <div class="brand-logo" aria-hidden="true">
+        <span class="brand-logo-text">C</span>
       </div>
       <div class="brand-text">
-        <h1>TechMart <span class="brand-badge">AI Concierge</span></h1>
-        <p><span class="status-dot"></span> Live Google Sheets & Gmail Active</p>
-      </div>
-    </div>
-
-    <!-- Live Metrics Pills -->
-    <div class="header-chips">
-      <div class="chip-item">
-        <span>📦 Catalog:</span>
-        <strong id="stat-products">1,320+ Live</strong>
-      </div>
-      <div class="chip-item">
-        <span>⚡ Sheets Sync:</span>
-        <strong>Real-Time (0s TTL)</strong>
-      </div>
-      <div class="chip-item">
-        <span>🔒 Orders:</span>
-        <strong id="stat-orders">Live Passkey Protected</strong>
+        <h1>Clara <span class="brand-badge">TechMart Concierge</span></h1>
+        <p><span class="status-dot"></span> Online &amp; Ready to Help</p>
       </div>
     </div>
 
     <!-- Actions -->
     <div class="header-actions">
       <!-- Place Order Button (Pop-up when cart has items) -->
-      <button class="header-place-order-btn" id="header-place-order-btn" style="display: none;" onclick="openCartCheckoutModal()" title="View Cart & Place Order">
+      <button class="header-place-order-btn" id="header-place-order-btn" style="display: none;" onclick="openCartCheckoutModal()" title="View Cart &amp; Place Order" aria-label="View Cart and Place Order">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
           <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
@@ -1500,7 +1574,7 @@ body.tm-light .modal-submit-btn {
       </button>
 
       <!-- New Chat -->
-      <button class="action-btn" id="new-chat-btn" title="Start a fresh conversation">
+      <button class="action-btn" id="new-chat-btn" title="Start a fresh conversation" aria-label="Start a fresh conversation">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M12 5v14M5 12h14"/>
         </svg>
@@ -1508,7 +1582,7 @@ body.tm-light .modal-submit-btn {
       </button>
 
       <!-- Theme Switcher -->
-      <button class="action-btn icon-btn" id="theme-btn" title="Toggle Light / Dark Mode">
+      <button class="action-btn icon-btn" id="theme-btn" title="Toggle Light / Dark Mode" aria-label="Toggle Light or Dark Mode">
         <svg id="icon-sun" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
           <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
@@ -1523,32 +1597,29 @@ body.tm-light .modal-submit-btn {
   </header>
 
   <!-- CHAT MESSAGES SCROLLER -->
-  <main class="chat-container" id="chat-container">
+  <main class="chat-container" id="chat-container" role="log" aria-live="polite" aria-label="Conversation messages">
     <div class="messages-wrapper" id="messages-wrapper">
 
       <!-- WELCOME HERO SECTION -->
       <div class="welcome-hero" id="welcome-hero">
-        <div class="hero-emblem">T</div>
-        <h2 class="hero-title">Experience TechMart Concierge</h2>
+        <div class="hero-emblem" aria-hidden="true">C</div>
+        <h2 class="hero-title">Hello! I'm Clara</h2>
         <p class="hero-desc">
-          I can guide you through our 1,320+ products, calculate exclusive final discounts, take your order, sync directly with Google Sheets, send your confirmation email with a secret passkey, and process policy-checked refunds.
+          Your personal shopping assistant. Ask me anything about our products, check prices and discounts, track your existing orders, or review return policies.
         </p>
 
-        <div class="hero-actions">
-          <button class="prompt-pill" data-prompt="Recommend the best laptops with discount and final price">
-            <span>💻</span> Best Laptops & Discounts
+        <div class="hero-actions" role="group" aria-label="Quick questions">
+          <button class="prompt-pill" data-prompt="Find the best laptops with discount">
+            <span aria-hidden="true">💻</span> Find a laptop
           </button>
-          <button class="prompt-pill" data-prompt="I want to place an order for a product">
-            <span>🛍️</span> Place an Order
-          </button>
-          <button class="prompt-pill" data-prompt="I want to track my order using my secret passkey">
-            <span>🔒</span> Track Order (Secret Passkey)
+          <button class="prompt-pill" data-prompt="I want to track my order">
+            <span aria-hidden="true">🔒</span> Track my order
           </button>
           <button class="prompt-pill" data-prompt="What is your return and refund policy?">
-            <span>📋</span> Return & Refund Policy
+            <span aria-hidden="true">📋</span> Refund policy
           </button>
-          <button class="prompt-pill" data-prompt="I would like to request a refund for an order">
-            <span>↩️</span> Request Refund
+          <button class="prompt-pill" data-prompt="Show me today's top deals and best discounts">
+            <span aria-hidden="true">🛍️</span> Browse hot deals
           </button>
         </div>
       </div>
@@ -1557,8 +1628,8 @@ body.tm-light .modal-submit-btn {
 
     <!-- TYPING INDICATOR -->
     <div class="messages-wrapper" style="padding-bottom: 0;">
-      <div class="msg-row bot typing-row" id="typing-indicator">
-        <div class="msg-avatar bot">T</div>
+      <div class="msg-row bot typing-row" id="typing-indicator" aria-label="Clara is typing">
+        <div class="msg-avatar bot">C</div>
         <div class="typing-dots">
           <div class="dot"></div>
           <div class="dot"></div>
@@ -1578,7 +1649,7 @@ body.tm-light .modal-submit-btn {
           <strong id="floating-cart-count">0 items</strong> in your cart · Total: <strong id="floating-cart-total">$0.00</strong>
         </span>
       </div>
-      <button type="button" class="floating-checkout-btn" onclick="openCartCheckoutModal()">
+      <button type="button" class="floating-checkout-btn" onclick="openCartCheckoutModal()" aria-label="Place Order">
         <span>Place Order</span>
         <span style="font-weight: 800;">→</span>
       </button>
@@ -1588,18 +1659,19 @@ body.tm-light .modal-submit-btn {
       <textarea
         id="user-input"
         class="chat-input"
-        placeholder="Ask about products, calculate final discounts, place orders, or enter your order passkey..."
+        placeholder="Ask about products or your order..."
         rows="1"
         maxlength="1000"
+        aria-label="Ask about products or your order"
       ></textarea>
-      <button class="send-btn" id="send-btn" aria-label="Send message">
+      <button class="send-btn" id="send-btn" aria-label="Send message" title="Send message" disabled>
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
           <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
         </svg>
       </button>
     </div>
     <div class="footer-disclaimer">
-      <span>✨ TechMart AI Engine</span> · <span>Live Google Sheets Sync & Gmail Dispatch Active</span>
+      <span>✨ TechMart Concierge</span> · <span>Available 24/7 for customer support</span>
     </div>
   </footer>
 
@@ -1746,6 +1818,7 @@ function init() {
   // Fetch live metrics
   fetchHealth();
 
+  updateSendButtonState();
   userInput.focus();
 }
 
@@ -1849,6 +1922,180 @@ function handleAddToCartClick(btn) {
     }, 1200);
   } catch(e) {
     console.error('Error adding to cart:', e);
+  }
+}
+
+function triggerOrderForm(productName) {
+  const prod = (productName || '').trim();
+  // In code: if the tag's product is empty, don't open the form.
+  if (!prod) return;
+  renderInlineOrderCard(prod);
+}
+
+function renderInlineOrderCard(productName) {
+  const cardId = 'order-card-' + Date.now();
+  const cardRow = document.createElement('div');
+  cardRow.className = 'msg-row bot order-card-row';
+  cardRow.innerHTML = `
+    <div class="msg-avatar bot">C</div>
+    <div class="msg-content-wrapper" style="max-width: 94%; width: 560px;">
+      <div class="chat-order-card" id="${cardId}">
+        <div class="chat-order-card-header">
+          <div class="chat-order-card-icon">🛍️</div>
+          <div class="chat-order-card-title-group">
+            <h4 class="chat-order-title">Place Your Order</h4>
+            <p class="chat-order-sub">Confirm product and delivery details below to order directly.</p>
+          </div>
+        </div>
+
+        <div class="chat-order-product-badge">
+          <span class="badge-label">Selected Item:</span>
+          <span class="badge-value"><strong>${escapeHtml(productName)}</strong></span>
+        </div>
+
+        <form class="chat-order-form" onsubmit="handleInlineOrderSubmit(event, '${cardId}', '${escapeForJs(productName)}')">
+          <div class="form-row-2col">
+            <div class="form-group">
+              <label class="form-label" for="${cardId}-name">Full Name</label>
+              <input id="${cardId}-name" type="text" name="customer_name" class="form-input" required placeholder="e.g. John Doe" />
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="${cardId}-email">Email (for passkey &amp; receipt)</label>
+              <input id="${cardId}-email" type="email" name="email" class="form-input" required placeholder="e.g. john@example.com" />
+            </div>
+          </div>
+
+          <div class="form-row-2col">
+            <div class="form-group">
+              <label class="form-label" for="${cardId}-phone">Contact Phone</label>
+              <input id="${cardId}-phone" type="tel" name="contact_number" class="form-input" required placeholder="e.g. +1 555-0199" />
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="${cardId}-bank">Bank Name</label>
+              <input id="${cardId}-bank" type="text" name="bank" class="form-input" required placeholder="e.g. Chase Bank" />
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="${cardId}-addr">Shipping Address</label>
+            <input id="${cardId}-addr" type="text" name="customer_address" class="form-input" required placeholder="Street address, city, state, postal code" />
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="${cardId}-iban">IBAN / Account Number</label>
+            <input id="${cardId}-iban" type="text" name="iban" class="form-input" required placeholder="e.g. US00TECH0011223344" />
+          </div>
+
+          <div class="modal-form-actions" style="margin-top: 14px;">
+            <button type="button" class="modal-cancel-btn" onclick="dismissInlineOrderCard('${cardId}')">Cancel</button>
+            <button type="submit" class="modal-submit-btn inline-submit-btn" id="${cardId}-submit-btn">
+              <span class="btn-text">Confirm &amp; Place Order</span>
+              <span class="btn-icon">→</span>
+            </button>
+          </div>
+          <div class="modal-status-msg" id="${cardId}-status" style="display: none;"></div>
+        </form>
+      </div>
+      <div class="msg-time">${getTimeString()}</div>
+    </div>
+  `;
+  messagesWrapper.appendChild(cardRow);
+  scrollToBottom();
+}
+
+function dismissInlineOrderCard(cardId) {
+  const card = document.getElementById(cardId);
+  if (card) {
+    card.innerHTML = `<div style="padding: 12px; color: var(--text-muted); font-size: 14px; text-align: center;">Order dismissed. Let me know if you would like to explore other items!</div>`;
+  }
+}
+
+async function handleInlineOrderSubmit(event, cardId, productName) {
+  event.preventDefault();
+  const form = event.target;
+  const btn = document.getElementById(`${cardId}-submit-btn`);
+  const statusEl = document.getElementById(`${cardId}-status`);
+  const card = document.getElementById(cardId);
+
+  const formData = new FormData(form);
+  const payload = {
+    session_id: sessionStorage.getItem('clara_session_id') || '',
+    customer_name: (formData.get('customer_name') || '').trim(),
+    email: (formData.get('email') || '').trim(),
+    contact_number: (formData.get('contact_number') || '').trim(),
+    customer_address: (formData.get('customer_address') || '').trim(),
+    bank: (formData.get('bank') || '').trim(),
+    iban: (formData.get('iban') || '').trim(),
+    items: [{
+      brand: '',
+      model: productName,
+      sku: '',
+      quantity: 1,
+      price: '',
+      final_price: ''
+    }]
+  };
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="btn-text">⏳ Placing Order...</span>';
+  statusEl.style.display = 'none';
+
+  try {
+    const res = await fetch(`${CONFIG.apiUrl}/api/order/place`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await res.json();
+    if (!res.ok || data.error) {
+      throw new Error(data.error || 'Failed to place order');
+    }
+
+    card.innerHTML = `
+      <div class="order-confirmed-banner">
+        <div class="order-confirmed-icon">🎉</div>
+        <div class="order-confirmed-title">Order Placed Successfully!</div>
+        <div class="order-confirmed-subtitle">Your order has been recorded and a confirmation receipt has been emailed to <strong>${escapeHtml(payload.email)}</strong>.</div>
+
+        <div class="order-details-grid">
+          <div class="order-detail-item">
+            <span class="detail-label">Order Number</span>
+            <span class="detail-value"><code>${data.order_number}</code></span>
+          </div>
+          <div class="order-detail-item">
+            <span class="detail-label">Secret Passkey</span>
+            <span class="detail-value"><code>${data.passkey}</code></span>
+          </div>
+          <div class="order-detail-item">
+            <span class="detail-label">Item</span>
+            <span class="detail-value">${escapeHtml(productName)}</span>
+          </div>
+          <div class="order-detail-item">
+            <span class="detail-label">Estimated Delivery</span>
+            <span class="detail-value">${data.delivery || '3-5 Business Days'}</span>
+          </div>
+          <div class="order-detail-item">
+            <span class="detail-label">Refund Policy Window</span>
+            <span class="detail-value">${data.refund_window || '30 Days'}</span>
+          </div>
+        </div>
+
+        <div class="passkey-alert-pill">
+          🔒 <strong>Keep your secret passkey safe:</strong> You will need <code>${data.passkey}</code> to track your order or request a return.
+        </div>
+      </div>
+    `;
+
+    fetchHealth();
+    scrollToBottom();
+
+  } catch(err) {
+    btn.disabled = false;
+    btn.innerHTML = '<span class="btn-text">Confirm &amp; Place Order</span><span class="btn-icon">→</span>';
+    statusEl.className = 'modal-status-msg form-status-error';
+    statusEl.style.display = 'block';
+    statusEl.textContent = '❌ ' + (err.message || 'Error placing order. Please try again.');
   }
 }
 
@@ -1968,6 +2215,7 @@ async function handleCartCheckoutSubmit(e) {
 
   const formData = new FormData(form);
   const payload = {
+    session_id: sessionStorage.getItem('clara_session_id') || '',
     customer_name: (formData.get('customer_name') || '').trim(),
     email: (formData.get('email') || '').trim(),
     contact_number: (formData.get('contact_number') || '').trim(),
@@ -2106,7 +2354,7 @@ function appendBotMessage(text, saveHistory = true) {
   const row = document.createElement('div');
   row.className = 'msg-row bot';
   row.innerHTML = `
-    <div class="msg-avatar bot">T</div>
+    <div class="msg-avatar bot">C</div>
     <div class="msg-content-wrapper">
       <div class="msg-bubble">${formatMarkdown(text)}</div>
       <div class="msg-time">${getTimeString()}</div>
@@ -2117,6 +2365,26 @@ function appendBotMessage(text, saveHistory = true) {
     history.push({ role: 'agent', content: text });
     try { sessionStorage.setItem('techmart_history', JSON.stringify(history)); } catch(e) {}
   }
+  scrollToBottom();
+}
+
+function appendErrorMessage(errorText) {
+  const row = document.createElement('div');
+  row.className = 'msg-row bot';
+  row.innerHTML = `
+    <div class="msg-avatar bot">C</div>
+    <div class="msg-content-wrapper">
+      <div class="chat-error-card" role="alert">
+        <div class="chat-error-icon">⚠️</div>
+        <div class="chat-error-body">
+          <strong>Connection Issue</strong>
+          <p>${escapeHtml(errorText)}</p>
+        </div>
+      </div>
+      <div class="msg-time">${getTimeString()}</div>
+    </div>
+  `;
+  messagesWrapper.appendChild(row);
   scrollToBottom();
 }
 
@@ -2135,6 +2403,11 @@ function scrollToBottom() {
   });
 }
 
+function updateSendButtonState() {
+  const hasText = userInput.value.trim().length > 0;
+  sendBtn.disabled = !hasText || isBusy;
+}
+
 // ── SEND MESSAGE ────────────────────────────────────────────────────────────
 async function sendMessage(text) {
   text = (text || userInput.value).trim();
@@ -2143,7 +2416,7 @@ async function sendMessage(text) {
   isBusy = true;
   userInput.value = '';
   autoResizeInput();
-  sendBtn.disabled = true;
+  updateSendButtonState();
 
   appendUserMessage(text, true);
   showTyping();
@@ -2168,17 +2441,36 @@ async function sendMessage(text) {
     }
     const reply = data.reply || 'I could not retrieve an answer. Please try again.';
 
+    // 1. Parse the control tag first to trigger the checkout form
+    const orderFormMatch = reply.match(/\[\[ORDER_FORM:([\s\S]*?)\]\]/);
+    if (orderFormMatch) {
+      try {
+        const orderData = JSON.parse(orderFormMatch[1]);
+        const product = (orderData.product || '').trim();
+        // In code: if the tag's product is empty, don't open the form.
+        if (product) {
+          triggerOrderForm(product);
+        }
+      } catch (e) {
+        console.error('Failed to parse ORDER_FORM:', e);
+      }
+    }
+
+    // 2. Strip control commands before rendering (raw tag must never be visible to customer)
+    const CONTROL_TAG = /\[\[(?!CART_BUTTON)[A-Z_]+:[\s\S]*?\]\]/g;
+    const clean = reply.replace(CONTROL_TAG, "").trim();
+
     hideTyping();
-    appendBotMessage(reply, true);
+    appendBotMessage(clean, true);
 
   } catch (err) {
-    console.error('[TechMart Chat Error]', err);
+    console.error('[Clara Chat Error]', err);
     hideTyping();
-    appendBotMessage(`⚠️ **Connection Error:** Could not connect to the backend server at \`${CONFIG.apiUrl}\`. Please verify the server is running and try again.`, true);
+    appendErrorMessage('I am having trouble connecting to the store server right now. Please verify your connection or try again in a moment.');
   }
 
   isBusy = false;
-  sendBtn.disabled = false;
+  updateSendButtonState();
   userInput.focus();
 }
 
@@ -2212,6 +2504,7 @@ newChatBtn.addEventListener('click', () => {
     messagesWrapper.appendChild(hero);
   }
   userInput.value = '';
+  updateSendButtonState();
   userInput.focus();
 });
 
@@ -2230,15 +2523,21 @@ function autoResizeInput() {
   userInput.style.height = Math.min(userInput.scrollHeight, 140) + 'px';
 }
 
-userInput.addEventListener('input', autoResizeInput);
+userInput.addEventListener('input', () => {
+  autoResizeInput();
+  updateSendButtonState();
+});
+
 userInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault();
-    sendMessage();
+    if (!sendBtn.disabled) sendMessage();
   }
 });
 
-sendBtn.addEventListener('click', () => sendMessage());
+sendBtn.addEventListener('click', () => {
+  if (!sendBtn.disabled) sendMessage();
+});
 
 // ── FORMATTING UTILITIES ────────────────────────────────────────────────────
 function escapeHtml(t) {
@@ -2252,7 +2551,10 @@ function escapeForJs(str) {
 function formatMarkdown(text) {
   if (!text) return '';
 
-  let safe = text
+  // Strip control commands before rendering (e.g. ORDER_FORM)
+  let safe = text.replace(/\[\[(?!CART_BUTTON)[A-Z_]+:[\s\S]*?\]\]/g, '');
+
+  safe = safe
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
