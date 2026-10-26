@@ -1681,7 +1681,9 @@ body.tm-light .modal-submit-btn {
 <script>
 // ── CONFIG ──────────────────────────────────────────────────────────────────
 const CONFIG = {
-  apiUrl: window.location.origin.includes('localhost') ? window.location.origin : 'http://localhost:5000',
+  apiUrl: (window.location.protocol === 'http:' || window.location.protocol === 'https:')
+    ? window.location.origin
+    : 'http://localhost:5000',
 };
 
 // ── STATE ───────────────────────────────────────────────────────────────────
