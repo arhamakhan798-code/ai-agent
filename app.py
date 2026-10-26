@@ -41,7 +41,7 @@ BASE_DIR         = os.path.dirname(os.path.abspath(__file__))
 SA_CREDS_FILE    = os.path.join(BASE_DIR, "techmart-database-a6718d22604c.json")
 GMAIL_TOKEN_FILE = os.path.join(BASE_DIR, "gmail_token.json")
 POLICY_FILE      = os.path.join(BASE_DIR, "policy.txt")
-CHROMA_PATH      = os.path.join(BASE_DIR, "chroma_db")
+CHROMA_PATH      = os.environ.get("CHROMA_PATH", os.path.join("/tmp" if os.environ.get("VERCEL") else BASE_DIR, "chroma_db"))
 SPREADSHEET_ID   = "15wQuB7ZcJBuEfODW82JyXDz9tM1XhB33DXl-nKDi2Z4"
 SENDER_EMAIL     = "arhamakhan798@gmail.com"
 
