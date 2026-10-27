@@ -22,6 +22,7 @@ import random
 import string
 import threading
 import urllib.request
+from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
@@ -114,6 +115,12 @@ def sanitize_input(value: str, max_len: int = 500) -> str:
 def _scrub_passkeys_from_text(text: str) -> str:
     """Removes any passkey values (SEC-XXXXX patterns) from text to prevent echo."""
     return re.sub(r'\bSEC-[A-Z0-9]{4,10}\b', '***', text, flags=re.IGNORECASE)
+
+_TAG_RE = re.compile(r'\[\[.*?\]\]', re.S)
+_THINK_RE = re.compile(r'<think>.*?</think>', re.S | re.I)
+
+def clean_llm_text(text: str) -> str:
+    return _THINK_RE.sub('', _TAG_RE.sub('', text or '')).strip()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -475,6 +482,10 @@ def search_products_data(
     # Extract clean non-stopword tokens
     raw_tokens = re.findall(r'[a-zA-Z0-9]+', q_lower)
     q_words = [w for w in raw_tokens if len(w) > 2 and w not in STOPWORDS]
+    if "ps5" in q_lower:
+        q_words.extend(["playstation", "slim"])
+    if "ps4" in q_lower:
+        q_words.extend(["playstation", "4"])
     cat_lower = category.lower().strip()
 
     # Detect target primary device categories
@@ -491,6 +502,8 @@ def search_products_data(
             target_categories = ["True Wireless Earbuds", "Wired Earphones"]
         elif is_headphone:
             target_categories = ["Headphones", "Gaming Headset", "True Wireless Earbuds", "Wired Earphones"]
+        elif any(w in q_lower for w in ["gaming console", "console", "consoles", "playstation", "ps5", "xbox", "nintendo switch", "steam deck"]):
+            target_categories = ["Gaming Console"]
         elif any(w in q_lower for w in ["laptop", "notebook", "macbook", "thinkpad"]) and not any(acc in q_lower for acc in ["stand", "dock", "charger", "adapter", "case"]):
             target_categories = ["Laptop"]
         elif any(re.search(rf'\b{p}\b', q_lower) for p in ["phone", "phones", "smartphone", "smartphones", "iphone", "galaxy", "pixel", "android"]) and not any(acc in q_lower for acc in ["charger", "cable", "case"]):
@@ -693,6 +706,7 @@ def place_order_service(
 
     order_num = generate_order_number()
     passkey = generate_passkey()
+    order_date_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     # Append each unit to Google Sheets with same order_num & passkey
     for mi in matched_items:
@@ -714,7 +728,8 @@ def place_order_service(
                 f"{mi['price']:.2f}",
                 f"{mi['discount']:.0f}%",
                 f"{mi['payable']:.2f}",
-                "Confirmed - Processing Delivery"
+                "Confirmed - Processing Delivery",
+                order_date_str
             ]
             try:
                 append_to_orders_sheet(order_row)
@@ -781,7 +796,7 @@ def place_order_service(
           <p>Thank you for your order, {customer_name}!</p>
         </div>
         <div class="content">
-          <p>Your order has been received and confirmed. It is scheduled to be <strong>delivered within a week or so (3–5 business days)</strong> to your address:</p>
+          <p>Your order has been received and confirmed on <strong>{order_date_str}</strong>. It is scheduled to be <strong>delivered within a week or so (3–5 business days)</strong> to your address:</p>
           <p style="background: #f8fafc; padding: 10px 14px; border-radius: 6px; font-size: 14px;">📍 {customer_address}</p>
 
           <div class="passkey-box">
@@ -849,6 +864,7 @@ def place_order_service(
         "success": True,
         "order_number": order_num,
         "passkey": passkey,
+        "order_date": order_date_str,
         "total_items": sum(mi["quantity"] for mi in matched_items),
         "product_name": summary_name,
         "brand": summary_brand,
@@ -891,6 +907,7 @@ def view_order_service(order_number: str, passkey: str) -> dict:
     return {
         "success": True,
         "Order Number": target_order.get("Order Number"),
+        "Order Date": target_order.get("Order Date", ""),
         "Customer Name": target_order.get("Customer Name"),
         "Customer Address": target_order.get("Customer Address"),
         "Product": f"{target_order.get('Order Brand')} {target_order.get('Model Name')} ({target_order.get('Model Year / Revision')})",
@@ -929,6 +946,17 @@ def request_refund_service(
     is_elec = any(e in category for e in ["laptop", "phone", "tablet", "audio", "camera", "headphone", "electronic"])
     max_days = 15 if is_elec else 30
 
+    order_date_val = str(target_order.get("Order Date") or "").strip()
+    if days_since_purchase is None or days_since_purchase == 5:
+        if order_date_val:
+            for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y"):
+                try:
+                    dt = datetime.strptime(order_date_val, fmt)
+                    days_since_purchase = max(0, (datetime.now() - dt).days)
+                    break
+                except ValueError:
+                    pass
+
     if days_since_purchase > max_days:
         return {
             "error": f"Refund Ineligible: Your purchase was {days_since_purchase} days ago. "
@@ -950,11 +978,12 @@ def request_refund_service(
             }
 
     # 3. Add to Refund Details sheet
-    # Columns: ['Order Number', 'Customer Name', 'Contact Number', 'Emails', 'Bank ', 'IBAN Number', 'Refund Approval', 'Refund Status']
+    # Columns: ['Order Number', 'Customer Name', 'Contact Number', 'Emails', 'Bank ', 'IBAN Number', 'Refund Approval', 'Refund Status', 'Order Date', 'Refund Request Date']
     cust_email = target_order.get("Emails", "")
     cust_name = target_order.get("Customer Name", "")
     bank_val = target_order.get("Bank", target_order.get("Bank ", ""))
     iban_val = target_order.get("IBAN Number", "")
+    refund_request_date_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     refund_row = [
         target_order.get("Order Number"),
@@ -964,14 +993,16 @@ def request_refund_service(
         bank_val,
         iban_val,
         "Approved (Eligible under Policy)",
-        "Processing"
+        "Processing",
+        order_date_val,
+        refund_request_date_str
     ]
 
     try:
         append_to_refunds_sheet(refund_row)
     except Exception as e:
         print(f"[Sheets] Refund append error: {e}")
-        return {"error": f"Could not record refund to Google Sheet: {e}"}
+        return {"error": "Could not record refund request at this time. Please try again shortly."}
 
     # 4. Send Confirmation Email via Gmail
     refund_email_html = f"""
@@ -1001,6 +1032,8 @@ def request_refund_service(
             <p style="margin: 0; color: #15803d;">Your refund is being processed by our team, they will reach you out soon.</p>
           </div>
           <p><strong>Order Number:</strong> {order_number}<br>
+          {f"<strong>Order Date:</strong> {order_date_val}<br>" if order_date_val else ""}
+          <strong>Refund Request Date:</strong> {refund_request_date_str}<br>
           <strong>Product:</strong> {target_order.get('Model Name')}<br>
           <strong>Refund Amount:</strong> ${parse_price(target_order.get('Payable Price (USD)', 0)):.2f} USD<br>
           <strong>Destination:</strong> {bank_val} ({iban_val})</p>
@@ -1023,6 +1056,8 @@ def request_refund_service(
         "success": True,
         "order_number": order_number,
         "status": "Processing",
+        "order_date": order_date_val,
+        "refund_request_date": refund_request_date_str,
         "message": "Your refund is being processed by our team, they will reach you out soon."
     }
 
@@ -1041,6 +1076,9 @@ SYSTEM_INSTRUCTION = """You are Clara, the shopping assistant for TechMart. You 
 
 # When you don't have the answer
 If the provided data doesn't contain what the customer asked, never guess. Reply "I'm sorry, but I don't know about that." followed by one short, friendly follow-up that fits the situation (offer related products, point to something you can help with, or ask what they'd like to explore). Vary the follow-up so it doesn't sound repetitive.
+
+# Staying on the question
+Answer exactly what the customer just asked. Do not show product lists unless they ask for recommendations or more options. If they ask about one product (price, discounts, warranty, stock), answer about that product only. When they say "it" or "that one," they mean the product we were just discussing.
 
 # Conversation awareness
 - Track the topic. Short follow-ups refer to what we just discussed. If we were talking about laptops and the customer says "tell me more about the Samsung one," they mean the Samsung laptop, not Samsung products in general.
@@ -1173,7 +1211,7 @@ def rewrite_query_with_history(user_msg: str, history: list = None) -> str:
     )
 
     req_body = json.dumps({
-        "model": "llama-3.1-8b-instant",  # Ultra-fast model for low-latency rewriting
+        "model": "qwen/qwen3.8-27b",  # High-quality fast model on Groq
         "messages": [
             {"role": "system", "content": rewrite_prompt},
             {"role": "user", "content": f"Recent Conversation:\n{conversation_context}\n\nCustomer Follow-up: {user_msg}\n\nStandalone Search Query:"}
@@ -1188,7 +1226,7 @@ def rewrite_query_with_history(user_msg: str, history: list = None) -> str:
         headers={
             "Authorization": f"Bearer {GROQ_API_KEY}",
             "Content-Type": "application/json",
-            "User-Agent": "TechMart-Clara/1.0"
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
         }
     )
     try:
@@ -1234,8 +1272,8 @@ def call_groq_llm(user_msg: str, context: str = "", history: list = None) -> str
 
     messages.append({"role": "user", "content": "\n".join(prompt_parts)})
 
-    # Try versatile model, with instant fallback
-    for model_name in ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "qwen/qwen3.8-27b"]:
+    # Try versatile models with instant fallback
+    for model_name in ["qwen/qwen3.8-27b", "openai/gpt-oss-120b", "openai/gpt-oss-20b", "llama-3.3-70b-versatile"]:
         req = urllib.request.Request(
             "https://api.groq.com/openai/v1/chat/completions",
             data=json.dumps({
@@ -1247,13 +1285,14 @@ def call_groq_llm(user_msg: str, context: str = "", history: list = None) -> str
             headers={
                 "Authorization": f"Bearer {GROQ_API_KEY}",
                 "Content-Type": "application/json",
-                "User-Agent": "TechMart-Clara/1.0"
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
             }
         )
         try:
             with urllib.request.urlopen(req, timeout=12) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
-                return data["choices"][0]["message"]["content"].strip()
+                raw_text = data["choices"][0]["message"]["content"]
+                return _THINK_RE.sub('', raw_text or '').strip()
         except Exception as e:
             print(f"[Groq AI Model {model_name} Error] {e}")
             continue
@@ -1508,29 +1547,217 @@ def resolve_last_order_context(history: list = None, session_id: str = None) -> 
 
     return "\n".join(lines)
 
+def classify_intent(user_msg: str, history: list = None) -> dict:
+    """
+    Per-message intent classifier using the last 4 to 6 messages for context.
+    Returns JSON only with one of 7 intents:
+    - recommend
+    - product_question
+    - order
+    - order_lookup
+    - refund
+    - policy
+    - other
+    """
+    VALID_INTENTS = {"recommend", "product_question", "order", "order_lookup", "refund", "policy", "other"}
+
+    history_context = []
+    if history:
+        for turn in history[-6:]:
+            role = "Customer" if turn.get("role") in ["user", "customer"] else "Clara"
+            content = turn.get("content", "")
+            clean = clean_llm_text(content)
+            if clean:
+                history_context.append(f"{role}: {clean[:200]}")
+    context_str = "\n".join(history_context) if history_context else "None"
+
+    system_prompt = (
+        "You are an intent classifier for Clara, the TechMart AI shopping assistant.\n"
+        "Analyze the customer's latest message in context of the recent conversation (last 4-6 messages).\n"
+        "Classify the intent into EXACTLY ONE of these 7 intents:\n"
+        "- recommend: customer wants suggestions, recommendations, alternatives, browsing, or asking to see more options (e.g., 'Show me gaming consoles', 'show more', 'what laptops do you have', 'suggest cheaper options')\n"
+        "- product_question: customer asks about price, discount, warranty, stock, specs, or availability of a specific or previously discussed product (e.g., 'Tell me about the PS5 Slim', 'Any more discounts on it?', 'What\\'s the warranty?', 'Do you sell a PS7?', 'Is it in stock?', 'How much is it?')\n"
+        "- order: customer explicitly expresses intent to buy, purchase, or checkout (e.g., 'I want to buy this', 'order now', 'checkout')\n"
+        "- order_lookup: customer asks to track, view, or check status of a past order (e.g., 'track my order', 'where is order TM-10001')\n"
+        "- refund: customer asks for a return or refund on an existing purchase\n"
+        "- policy: customer asks about general store policies (return window, shipping timelines, warranties in general)\n"
+        "- other: greetings, thanks, goodbyes, general chat, or off-topic (e.g., 'Hi', 'Thanks!', 'How are you?')\n\n"
+        "CRITICAL RULES:\n"
+        "1. Never classify a message as 'recommend' just because a product is mentioned. Questions about price, discount, warranty, stock, or specs are ALWAYS 'product_question'.\n"
+        "2. If the user refers to 'it', 'that one', 'this', determine the product from history.\n"
+        "3. Output MUST be ONLY a JSON object: {\"intent\": \"<intent>\", \"product\": \"<product name or reference if mentioned or inferred, else empty string>\"}."
+    )
+
+    if GROQ_API_KEY:
+        for model_name in ["qwen/qwen3.8-27b", "openai/gpt-oss-120b", "openai/gpt-oss-20b", "llama-3.3-70b-versatile"]:
+            req_body = json.dumps({
+                "model": model_name,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": f"Recent History:\n{context_str}\n\nLatest Customer Message: {user_msg}\nJSON:"}
+                ],
+                "temperature": 0.0,
+                "max_tokens": 80,
+                "response_format": {"type": "json_object"}
+            }).encode("utf-8")
+
+            req = urllib.request.Request(
+                "https://api.groq.com/openai/v1/chat/completions",
+                data=req_body,
+                headers={
+                    "Authorization": f"Bearer {GROQ_API_KEY}",
+                    "Content-Type": "application/json",
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+                }
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=5) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    raw = data["choices"][0]["message"]["content"].strip()
+                    parsed = json.loads(raw)
+                    intent = parsed.get("intent", "").lower().strip()
+                    if intent in VALID_INTENTS:
+                        return {"intent": intent, "product": parsed.get("product", "").strip()}
+            except Exception as e:
+                print(f"[Classifier Groq Error {model_name}] {e}")
+                continue
+
+    # Heuristic fallback (only used if the LLM classifier fails)
+    msg_low = user_msg.lower()
+    def has(*words):
+        return any(re.search(rf'\b{re.escape(w)}\b', msg_low) for w in words)
+
+    if re.search(r'\bTM-\d{4,8}\b', user_msg, re.I) or has("track", "tracking", "status"):
+        return {"intent": "order_lookup", "product": ""}
+    if has("refund", "refunds"):
+        return {"intent": "refund", "product": ""}
+    if has("buy", "purchase", "checkout") or "place order" in msg_low:
+        return {"intent": "order", "product": ""}
+    if has("discount", "discounts", "price", "cost", "warranty", "stock", "spec", "specs") \
+       or any(p in msg_low for p in ["how much", "tell me about", "do you sell"]):
+        return {"intent": "product_question", "product": ""}
+    if has("more", "recommend", "suggest", "options", "alternatives", "cheaper", "show"):
+        return {"intent": "recommend", "product": ""}
+    if has("policy", "policies", "shipping", "delivery"):
+        return {"intent": "policy", "product": ""}
+    return {"intent": "other", "product": ""}
+
+def resolve_product_for_question(user_msg: str, product_ref: str = "", history: list = None) -> dict | None:
+    """
+    Finds the single product the customer is asking about:
+    1. Checks explicit mention in user message or classifier product reference.
+    2. If it's a pronoun ('it', 'that one', 'this') or follow-up, resolves from recent conversation history.
+    """
+    msg_clean = user_msg.lower().strip()
+    pronouns = {"it", "that one", "this", "this one", "that", "the item", "the product", "it?", "that?"}
+
+    # 1. Check explicit product reference from classifier
+    query_target = product_ref.strip() if product_ref and product_ref.lower() not in pronouns else ""
+
+    # If classifier didn't extract a name or extracted a pronoun, test user_msg itself if it isn't only a pronoun
+    if not query_target:
+        tokens = set(re.findall(r'\b\w+\b', msg_clean))
+        if not tokens.issubset({"it", "this", "that", "one", "the", "what", "is", "any", "more", "discounts", "discount", "warranty", "on", "about", "tell", "me", "how", "much"}):
+            query_target = user_msg
+
+    if query_target:
+        candidates = search_products_data(query_target, limit=1)
+        if candidates and candidates[0].get("_score", 0) >= 15:
+            return candidates[0]
+
+    # 2. Check conversation history (from most recent assistant/user messages backwards)
+    if history:
+        for turn in reversed(history):
+            content = turn.get("content", "")
+            # Check CART_BUTTON payloads
+            for cb in re.finditer(r'\[\[CART_BUTTON:(\{.*?\})\]\]', content):
+                try:
+                    raw = cb.group(1).replace("&quot;", '"').replace("&amp;", '&')
+                    cdata = json.loads(raw)
+                    model = cdata.get("model", "")
+                    brand = cdata.get("brand", "")
+                    target = f"{brand} {model}".strip()
+                    prods = search_products_data(target, limit=1)
+                    if prods:
+                        return prods[0]
+                except Exception:
+                    pass
+
+            # Check markdown product headers: ### 1. Brand Model
+            m = re.search(r'### \d+\.\s*([^\n]+)', content)
+            if m:
+                header_prod = m.group(1).strip()
+                prods = search_products_data(header_prod, limit=1)
+                if prods:
+                    return prods[0]
+
+            # Check PRODUCT DATA in context
+            m_ctx = re.search(r'-\s*Model:\s*([^\n]+)', content)
+            if m_ctx:
+                model_name = m_ctx.group(1).strip()
+                prods = search_products_data(model_name, limit=1)
+                if prods:
+                    return prods[0]
+
+    return None
+
+def generate_recommendation_intro(user_msg: str, products: list[dict], history: list = None) -> str:
+    """Generates a concise, model-written intro sentence for recommended products from our catalog."""
+    if not products:
+        return ""
+
+    prod_names = ", ".join(f"{p.get('Brand', '')} {p.get('Model Name', '')}".strip() for p in products[:3])
+    prompt = (
+        f"The customer asked: \"{user_msg}\".\n"
+        f"We are showing these recommended products from our catalog: {prod_names}.\n"
+        "Write a single, friendly, natural intro sentence (under 15 words) introducing these options from our catalog. "
+        "Do not list specifications, prices, or product names, and never say 'live catalog' (use 'our catalog')."
+    )
+
+    if GROQ_API_KEY:
+        try:
+            intro = call_groq_llm(prompt, history=history)
+            if intro:
+                clean_intro = intro.strip().strip('"').strip("'")
+                first_line = clean_intro.split("\n")[0].strip()
+                if first_line and len(first_line) < 120 and "live catalog" not in first_line.lower():
+                    return first_line
+        except Exception as e:
+            print(f"[Intro Generation Error] {e}")
+
+    return f"Here are {len(products[:3])} recommendations from our catalog that match your request:"
+
 def ai_chat_handler(user_msg: str, history: list, session_id: str = None) -> str:
-    """Direct intelligent AI pipeline with live sheets, ChromaDB policy RAG, action detection, and instant failover."""
+    """Direct intelligent AI pipeline routed per-message by intent classification."""
     msg_lower = user_msg.lower().strip()
 
     # Pass the last order into context so queries like "the item I ordered" can be resolved
     order_ctx_str = resolve_last_order_context(history=history, session_id=session_id)
 
-    # 1. Action Check: View / Track Order
+    # 1. Per-Message Intent Classification (using last 4 to 6 messages context)
+    intent_data = classify_intent(user_msg, history=history)
+    intent = intent_data.get("intent", "other")
+    product_ref = intent_data.get("product", "")
+
+    # Quick extraction for order numbers and passkeys
     order_match = re.search(r'\b(TM-\d{5,8})\b', user_msg, re.IGNORECASE)
-    passkey_match = re.search(r'\b(SEC-[A-Z0-9]{4,10}|[A-Z0-9]{6,10})\b', user_msg, re.IGNORECASE)
+    passkey_match = re.search(r'\b(SEC-[A-Z0-9]{4,10})\b', user_msg, re.IGNORECASE)
 
-    wants_order_status = any(k in msg_lower for k in [
-        "track order", "track my order", "order status", "check my order", "check order",
-        "where is my order", "status of my order", "view my order", "view order"
-    ]) or (("track" in msg_lower or "status" in msg_lower or "where is" in msg_lower) and "order" in msg_lower)
+    # If message has explicit order tracking or refund patterns, respect them
+    if order_match and any(w in msg_lower for w in ["track", "status", "view", "check", "where"]):
+        intent = "order_lookup"
+    elif any(k in msg_lower for k in ["refund", "return my order", "return an order", "return item"]):
+        intent = "refund"
 
-    if wants_order_status and not order_match:
-        return (
-            "To view or track your order, please provide your **Order Number** (e.g., `TM-10001`) "
-            "and the secret **Order Passkey** sent to your confirmation email."
-        )
-
-    if order_match and ("track" in msg_lower or "view" in msg_lower or "status" in msg_lower or "check" in msg_lower):
+    # ──────────────────────────────────────────────────────────────────────────
+    # ROUTE 1: ORDER LOOKUP
+    # ──────────────────────────────────────────────────────────────────────────
+    if intent == "order_lookup":
+        if not order_match:
+            return (
+                "To view or track your order, please provide your **Order Number** (e.g., `TM-10001`) "
+                "and the secret **Order Passkey** sent to your confirmation email."
+            )
         if not passkey_match:
             return (
                 f"I found your request for **Order #{order_match.group(1).upper()}**. 🔒\n\n"
@@ -1538,28 +1765,26 @@ def ai_chat_handler(user_msg: str, history: list, session_id: str = None) -> str
                 f"please provide your **Secret Key (Order Passkey)** that was sent to your email when you placed the order.\n\n"
                 f"*(Example: `View order {order_match.group(1).upper()} with passkey SEC-XXXXXX`)*"
             )
-        else:
-            ord_res = view_order_service(order_match.group(1), passkey_match.group(1))
-            if "error" in ord_res:
-                return f"⚠️ **{ord_res['error']}**"
-            return (
-                f"### 📦 Order Details — {ord_res['Order Number']}\n\n"
-                f"- **Customer:** {ord_res['Customer Name']}\n"
-                f"- **Product:** {ord_res['Product']} ({ord_res['Category']})\n"
-                f"- **Total Payable:** {ord_res['Payable Price']}\n"
-                f"- **Payment Status:** {ord_res['Payment Status']}\n"
-                f"- **Delivery Status:** {ord_res['Delivery Timeline']}\n"
-                f"- **Shipping Address:** {ord_res['Customer Address']}\n"
-                f"- **Payment Info:** {ord_res['Bank']} ({ord_res['IBAN']})\n"
-            )
+        ord_res = view_order_service(order_match.group(1), passkey_match.group(1))
+        if "error" in ord_res:
+            return f"⚠️ **{ord_res['error']}**"
+        date_line = f"- **Order Date:** {ord_res['Order Date']}\n" if ord_res.get("Order Date") else ""
+        return (
+            f"### 📦 Order Details — {ord_res['Order Number']}\n\n"
+            f"- **Customer:** {ord_res['Customer Name']}\n"
+            f"{date_line}"
+            f"- **Product:** {ord_res['Product']} ({ord_res['Category']})\n"
+            f"- **Total Payable:** {ord_res['Payable Price']}\n"
+            f"- **Payment Status:** {ord_res['Payment Status']}\n"
+            f"- **Delivery Status:** {ord_res['Delivery Timeline']}\n"
+            f"- **Shipping Address:** {ord_res['Customer Address']}\n"
+            f"- **Payment Info:** {ord_res['Bank']} ({ord_res['IBAN']})\n"
+        )
 
-    # 2. Action Check: Refund Request
-    wants_refund = any(k in msg_lower for k in [
-        "refund", "return my order", "return an order", "return item", "return my item",
-        "how to refund", "can i refund", "i want a refund", "request a refund", "get a refund"
-    ]) or ("refund" in msg_lower and any(w in msg_lower for w in ["order", "item", "product", "money", "purchase", "can i", "how"]))
-
-    if wants_refund:
+    # ──────────────────────────────────────────────────────────────────────────
+    # ROUTE 2: REFUND
+    # ──────────────────────────────────────────────────────────────────────────
+    if intent == "refund":
         if order_match:
             if not passkey_match:
                 return (
@@ -1569,130 +1794,251 @@ def ai_chat_handler(user_msg: str, history: list, session_id: str = None) -> str
             ref_res = request_refund_service(order_match.group(1), passkey_match.group(1))
             if "error" in ref_res:
                 return f"❌ **{ref_res['error']}**"
+            date_info = f"\n• **Order Date:** {ref_res['order_date']}\n• **Refund Request Date:** {ref_res['refund_request_date']}\n" if ref_res.get("refund_request_date") else ""
             return (
                 f"✅ **Refund Request Submitted!**\n\n"
-                f"{ref_res['message']}\n\n"
+                f"{ref_res['message']}\n"
+                f"{date_info}\n"
                 f"We have sent an email notification to the email on file. "
                 f"Our team will reach out to you shortly to coordinate the return. "
                 f"Once received, your refund will be processed within 5 business days."
             )
-        else:
-            return (
-                "Yes, you can request a refund. According to TechMart policy:\n\n"
-                "• **Electronics (laptops, phones, tablets):** Must be returned within 15 days of purchase.\n"
-                "• **Other items:** Within 30 days of purchase.\n"
-                "• **Condition:** Items must be unused and in original packaging with all accessories.\n"
-                "• **Processing:** Completed within 5 business days after the returned item is received.\n\n"
-                "To process your refund, please provide your **Order Number** (e.g., `TM-10001`) and your secret **Order Passkey**."
-            )
-
-    # 3. Action Check: Interactive Checkout / Order Placement Request
-    # CRITICAL RULE: Only start an order when the customer CLEARLY says they want to buy AND the product is known.
-    # Questions about warranty, policies, returns, specs, or previous orders must NEVER start an order.
-    is_question_or_inquiry = any(q in msg_lower for q in [
-        "warranty", "guarantee", "policy", "policies", "return", "refund", "track", "status", 
-        "where is", "how long", "what is", "how does", "tell me about", "is there", "do you have",
-        "can i return", "item i ordered", "ordered item", "past order", "previous order", "which",
-        "can you check", "check my", "what's the", "whats the", "how to buy", "can i buy"
-    ])
-
-    explicit_buy_intent = (
-        not is_question_or_inquiry and (
-            any(p in msg_lower for p in [
-                "purchase", "place order", "want to buy", "want this", "buy this", "order this", 
-                "order now", "buy now", "checkout", "place an order", "i want to purchase", 
-                "i will take this", "i'll buy", "i'll take", "buy it", "order it"
-            ]) or (
-                "buy" in msg_lower and not any(w in msg_lower for w in [
-                    "why", "how to buy", "can i buy", "where to buy", "should i buy", "worth buying", "did i buy"
-                ])
-            )
+        return (
+            "Yes, you can request a refund. According to TechMart policy:\n\n"
+            "• **Electronics (laptops, phones, tablets):** Must be returned within 15 days of purchase.\n"
+            "• **Other items:** Within 30 days of purchase.\n"
+            "• **Condition:** Items must be unused and in original packaging with all accessories.\n"
+            "• **Processing:** Completed within 5 business days after the returned item is received.\n\n"
+            "To process your refund, please provide your **Order Number** (e.g., `TM-10001`) and your secret **Order Passkey**."
         )
-    )
 
-    if explicit_buy_intent:
-        target_prod_name = ""
-        cand_prods = search_products_data(user_msg, limit=1)
-        if cand_prods and cand_prods[0].get("_score", 0) >= 15:
-            target_prod_name = f"{cand_prods[0]['Brand']} {cand_prods[0]['Model Name']}"
-        elif history:
+    # ──────────────────────────────────────────────────────────────────────────
+    # ROUTE 3: ORDER / BUY
+    # ──────────────────────────────────────────────────────────────────────────
+    if intent == "order":
+        # Check if customer entered direct checkout details
+        if "@" in user_msg and any(w in msg_lower for w in ["order", "buy", "name:", "phone:", "address:"]):
+            email_match = re.search(r'[\w\.-]+@[\w\.-]+\.\w+', user_msg)
+            email_val = email_match.group(0) if email_match else ""
+            phone_match = re.search(r'(\+?\d[\d\s-]{7,15})', user_msg)
+            phone_val = phone_match.group(0).strip() if phone_match else "+1-555-0100"
+            prods = search_products_data(user_msg, limit=1)
+            if prods and email_val:
+                prod_name = prods[0]["Model Name"]
+                order_res = place_order_service(
+                    customer_name="Valued Customer",
+                    contact_number=phone_val,
+                    email=email_val,
+                    bank="Standard Bank",
+                    iban="US00TECH0011223344",
+                    customer_address="Customer Shipping Address",
+                    product_name_or_sku=prod_name
+                )
+                if order_res.get("success"):
+                    if session_id:
+                        with _session_lock:
+                            sess = _sessions.get(session_id)
+                            if sess is not None:
+                                sess["last_order"] = {
+                                    "Order Number": order_res.get("order_number", ""),
+                                    "Model Name": order_res.get("product_name", ""),
+                                    "Brand": order_res.get("brand", ""),
+                                    "customer_name": "Valued Customer",
+                                }
+                    return (
+                        f"### 🎉 Order Placed Successfully!\n\n"
+                        f"- **Order Number:** `{order_res['order_number']}`\n"
+                        f"- **Product:** {order_res['product_name']} ({order_res['brand']})\n"
+                        f"- **Original Price:** {order_res['price']}\n"
+                        f"- **Discount Applied:** {order_res['discount']}\n"
+                        f"- **Final Payable Price:** **{order_res['final_payable_price']}**\n"
+                        f"- **Delivery Estimate:** {order_res['delivery']}\n"
+                        f"- **Refund Policy Window:** {order_res['refund_window']}\n\n"
+                        f"🔒 **Your Secret Passkey:** `{order_res['passkey']}`\n\n"
+                        f"A detailed confirmation email has been sent to **{email_val}**. "
+                        f"Please keep your secret passkey safe, as you will need it to view your order or request a refund!"
+                    )
+
+        target_prod = resolve_product_for_question(user_msg, product_ref, history)
+        if target_prod:
+            target_name = f"{target_prod['Brand']} {target_prod['Model Name']}".strip()
+            prod_json = json.dumps({"product": target_name})
+            return (
+                f"I'd be thrilled to help you place your order for **{target_name}**! 🎉\n\n"
+                f"Please review and complete your delivery details in the checkout form below. "
+                f"Once submitted, your order will be instantly saved to our database, and your confirmation with secret tracking passkey will be emailed to you.\n\n"
+                f"[[ORDER_FORM:{prod_json}]]"
+            )
+        return "I'd love to help you order! Which product from our catalog would you like to purchase?"
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # ROUTE 4: PRODUCT QUESTION (Price, Discount, Warranty, Stock, Specs)
+    # Never show cards unless asked! Answer strictly from that product's row.
+    # ──────────────────────────────────────────────────────────────────────────
+    if intent == "product_question":
+        target_prod = resolve_product_for_question(user_msg, product_ref, history)
+
+        if not target_prod:
+            # Check if this query is about the last ordered item
+            if order_ctx_str and any(k in msg_lower for k in ["ordered", "my order", "item i ordered"]):
+                context = f"OFFICIAL STORE DATA:\n{order_ctx_str}"
+                if GROQ_API_KEY:
+                    resp = call_groq_llm(user_msg, context=context, history=history)
+                    if resp:
+                        return resp
+                return order_ctx_str
+
+            # Product not in data -> fallback requirement:
+            # reply "I'm sorry, but I don't know about that," plus a short friendly follow-up
+            not_found_name = product_ref if product_ref and product_ref.lower() not in {"it", "that one", "this"} else user_msg
+            fallback_prompt = (
+                f"The customer is asking: \"{user_msg}\". "
+                f"The product '{not_found_name}' is NOT in our catalog data. "
+                "Following Clara's rule for when you don't have the answer, reply: "
+                "\"I'm sorry, but I don't know about that.\" followed by a short friendly follow-up offering related products or asking what they'd like to explore in our catalog. "
+                "Do NOT show any product cards or bracketed tags."
+            )
+            if GROQ_API_KEY:
+                reply = call_groq_llm(fallback_prompt, history=history)
+                if reply:
+                    return reply
+            return f"I'm sorry, but I don't know about that. We don't carry that in our catalog right now. Would you like to explore other options we have available?"
+
+        # Build focused context strictly from this product's row in the catalog
+        prod_row_context = (
+            f"PRODUCT DATA FROM OUR CATALOG (USE EXCLUSIVELY AS SOURCE OF TRUTH):\n"
+            f"- Brand: {target_prod.get('Brand', '')}\n"
+            f"- Model Name: {target_prod.get('Model Name', '')}\n"
+            f"- Category: {target_prod.get('Category', '')}\n"
+            f"- Key Specifications: {target_prod.get('Key Specifications', '')}\n"
+            f"- Feature Highlights: {target_prod.get('Feature Highlights', '')}\n"
+            f"- Original Price: {target_prod.get('Price (USD)', '')}\n"
+            f"- Discount: {target_prod.get('Discount_Display', '')} ({target_prod.get('Discount (%)', '0%')})\n"
+            f"- Final Payable Price: {target_prod.get('Final Discounted Price (USD)', '')}\n"
+            f"- Stock: {target_prod.get('Stock', 'Available')} in stock\n"
+            f"- Warranty: {target_prod.get('Warranty', '1 Year Manufacturer Warranty')}\n"
+        )
+        if order_ctx_str:
+            prod_row_context += f"\n{order_ctx_str}\n"
+
+        if GROQ_API_KEY:
+            prod_ans = call_groq_llm(user_msg, context=prod_row_context, history=history)
+            if prod_ans:
+                return prod_ans
+
+        if _model:
+            try:
+                chat = _model.start_chat()
+                resp = chat.send_message(f"{prod_row_context}\n\nCustomer: {user_msg}\nRespond as Clara concisely and factually using only the product data above.")
+                if resp and resp.text:
+                    return resp.text.strip()
+            except Exception as e:
+                print(f"[Gemini Product Call Error] {e}")
+
+        # Fallback factual answer
+        return (
+            f"The **{target_prod['Brand']} {target_prod['Model Name']}** is available in our catalog for "
+            f"**{target_prod['Final Discounted Price (USD)']} USD** ({target_prod['Discount_Display']}). "
+            f"It comes with {target_prod['Warranty']} and there are {target_prod['Stock']} units in stock."
+        )
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # ROUTE 5: RECOMMEND (Suggestions, Alternatives, Browsing)
+    # Cards ONLY appear for recommend intent (up to 3 cards, never repeat shown items)
+    # ──────────────────────────────────────────────────────────────────────────
+    if intent == "recommend":
+        # Extract models already shown to customer from previous turns
+        already_shown_models = set()
+        already_shown_brands = set()
+        ongoing_categories = []
+
+        if history:
             for h in reversed(history):
-                content_h = h.get("content", "")
+                content = (h.get("content") or "").strip()
                 if h.get("role") in ["agent", "assistant"]:
-                    m = re.search(r'### \d+\.\s*([^\n]+)', content_h)
-                    if m:
-                        target_prod_name = m.group(1).strip()
-                        break
-                    cb_m = re.search(r'\[\[CART_BUTTON:(\{.*?\})\]\]', content_h)
-                    if cb_m:
+                    for m in re.finditer(r'### \d+\.\s*([^\n]+)', content):
+                        already_shown_models.add(m.group(1).strip().lower())
+                    for cb in re.finditer(r'\[\[CART_BUTTON:(\{.*?\})\]\]', content):
                         try:
-                            cb_data = json.loads(cb_m.group(1).replace("&quot;", '"').replace("&amp;", '&'))
-                            brand_part = cb_data.get("brand", "").strip()
-                            model_part = cb_data.get("model", "").strip()
-                            target_prod_name = f"{brand_part} {model_part}".strip()
-                            if target_prod_name:
-                                break
+                            raw = cb.group(1).replace("&quot;", '"').replace("&amp;", '&')
+                            cdata = json.loads(raw)
+                            if cdata.get("model"):
+                                already_shown_models.add(cdata["model"].strip().lower())
+                            if cdata.get("brand"):
+                                already_shown_brands.add(cdata["brand"].strip().lower())
                         except Exception:
                             pass
 
-        # In code: if the tag's product is empty, don't open the form.
-        # Only start an order when the customer clearly says they want to buy AND the product is known.
-        if target_prod_name:
-            prod_json = json.dumps({"product": target_prod_name})
-            return (
-                f"I'd be thrilled to help you place your order for **{target_prod_name}**! 🎉\n\n"
-                f"Please review and complete your delivery details in the checkout form below. "
-                f"Once submitted, your order will be instantly saved to our live database, and your confirmation with secret tracking passkey will be emailed to you.\n\n"
-                f"[[ORDER_FORM:{prod_json}]]"
+                if not ongoing_categories:
+                    c_low = content.lower()
+                    if any(w in c_low for w in ["gaming console", "console", "consoles", "playstation", "ps5", "xbox", "nintendo switch", "steam deck"]):
+                        ongoing_categories = ["Gaming Console"]
+                    elif any(w in c_low for w in ["smartwatch", "fitness tracker", "watch"]):
+                        ongoing_categories = ["Smartwatch", "Fitness Tracker"]
+                    elif any(w in c_low for w in ["earpod", "earpods", "airpod", "airpods", "earbud", "earbuds", "earphone", "buds"]):
+                        ongoing_categories = ["True Wireless Earbuds", "Wired Earphones"]
+                    elif any(w in c_low for w in ["headphone", "headphones", "headset"]):
+                        ongoing_categories = ["Headphones", "Gaming Headset"]
+                    elif any(w in c_low for w in ["laptop", "notebook", "macbook", "thinkpad"]):
+                        ongoing_categories = ["Laptop"]
+                    elif any(w in c_low for w in ["phone", "smartphone", "iphone", "pixel"]):
+                        ongoing_categories = ["Phone"]
+                    elif "tablet" in c_low or "ipad" in c_low:
+                        ongoing_categories = ["Tablet"]
+                    elif "monitor" in c_low or "display" in c_low:
+                        ongoing_categories = ["Monitor", "Portable Monitor"]
+                    elif any(w in c_low for w in ["gpu", "graphics card"]):
+                        ongoing_categories = ["GPU / Graphics Card"]
+
+        wants_more = any(k in msg_lower for k in ["more", "show more", "see more", "other choices", "any others", "another option"])
+        wants_cheaper = any(k in msg_lower for k in ["cheaper", "budget", "affordable", "less expensive", "lower price"])
+
+        # Determine target search query and category
+        search_query = rewrite_query_with_history(user_msg, history) if not wants_more else ""
+        if wants_more:
+            # If asking for more, retain the ongoing category
+            cat_override = ongoing_categories if ongoing_categories else None
+        else:
+            cat_override = ongoing_categories if (ongoing_categories and not any(c in msg_lower for c in ["laptop", "phone", "watch", "headphone", "console", "earbud", "monitor", "gpu", "tablet"])) else None
+
+        # Retrieve up to 3 products, strictly excluding already shown models
+        recommended_products = search_products_data(
+            query=search_query,
+            target_categories_override=cat_override,
+            sort_by_price_asc=wants_cheaper,
+            exclude_models=already_shown_models,
+            limit=3
+        )
+
+        if not recommended_products and search_query != user_msg:
+            recommended_products = search_products_data(
+                query=user_msg,
+                target_categories_override=cat_override,
+                sort_by_price_asc=wants_cheaper,
+                exclude_models=already_shown_models,
+                limit=3
             )
 
-    # 4. Action Check: Place Order Detection (if user directly typed email and order fields)
-    if "@" in user_msg and any(w in msg_lower for w in ["order", "buy", "name:", "phone:", "address:"]):
-        email_match = re.search(r'[\w\.-]+@[\w\.-]+\.\w+', user_msg)
-        email_val = email_match.group(0) if email_match else ""
-        phone_match = re.search(r'(\+?\d[\d\s-]{7,15})', user_msg)
-        phone_val = phone_match.group(0).strip() if phone_match else "+1-555-0100"
-
-        prods = search_products_data(user_msg, limit=1)
-        if prods and email_val:
-            prod_name = prods[0]["Model Name"]
-            order_res = place_order_service(
-                customer_name="Valued Customer",
-                contact_number=phone_val,
-                email=email_val,
-                bank="Standard Bank",
-                iban="US00TECH0011223344",
-                customer_address="Customer Shipping Address",
-                product_name_or_sku=prod_name
+        # If all items in this category were already shown, fall back to general category search without exclusion
+        if not recommended_products and already_shown_models:
+            recommended_products = search_products_data(
+                query=search_query or user_msg,
+                target_categories_override=cat_override,
+                limit=3
             )
-            if order_res.get("success"):
-                # Save to session so "the item I ordered" resolves correctly
-                if session_id:
-                    with _session_lock:
-                        sess = _sessions.get(session_id)
-                        if sess is not None:
-                            sess["last_order"] = {
-                                "Order Number": order_res.get("order_number", ""),
-                                "Model Name": order_res.get("product_name", ""),
-                                "Brand": order_res.get("brand", ""),
-                                "customer_name": "Valued Customer",
-                            }
-                return (
-                    f"### 🎉 Order Placed Successfully!\n\n"
-                    f"- **Order Number:** `{order_res['order_number']}`\n"
-                    f"- **Product:** {order_res['product_name']} ({order_res['brand']})\n"
-                    f"- **Original Price:** {order_res['price']}\n"
-                    f"- **Discount Applied:** {order_res['discount']}\n"
-                    f"- **Final Payable Price:** **{order_res['final_payable_price']}**\n"
-                    f"- **Delivery Estimate:** {order_res['delivery']}\n"
-                    f"- **Refund Policy Window:** {order_res['refund_window']}\n\n"
-                    f"🔒 **Your Secret Passkey:** `{order_res['passkey']}`\n\n"
-                    f"A detailed confirmation email has been sent to **{email_val}**. "
-                    f"Please keep your secret passkey safe, as you will need it to view your order or request a refund!"
-                )
 
-    # 5. Action Check: Policy & Warranty Inquiries (answer strictly using store policy & product warranty data)
-    if any(k in msg_lower for k in ["policy", "return", "shipping", "warranty", "exchange", "refund policy", "guarantee"]):
+        if recommended_products:
+            # Generate short model-written intro
+            model_intro = generate_recommendation_intro(user_msg, recommended_products, history=history)
+            return format_product_recommendations(recommended_products[:3], intro_message=model_intro)
+
+        # Fallback if no matching products in data
+        return "I'm sorry, but I don't know about that. We don't have matching products in our catalog right now. Is there another category or device you'd like to explore?"
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # ROUTE 6: POLICY
+    # ──────────────────────────────────────────────────────────────────────────
+    if intent == "policy":
         policy_ctx = query_policy(user_msg, n=2)
         policy_sections = []
         if policy_ctx:
@@ -1700,285 +2046,25 @@ def ai_chat_handler(user_msg: str, history: list, session_id: str = None) -> str
         if order_ctx_str:
             policy_sections.append(order_ctx_str)
 
-        cand_prods = search_products_data(user_msg, limit=2)
-        if cand_prods and cand_prods[0].get("_score", 0) >= 15:
-            policy_sections.append(f"RELEVANT PRODUCT DATA FROM CATALOG:\n{json.dumps(cand_prods[:2], indent=1)}")
-
         full_policy_context = "\n\n".join(policy_sections)
         if GROQ_API_KEY:
-            policy_ans = call_groq_llm(
-                user_msg,
-                context=full_policy_context,
-                history=history
-            )
+            policy_ans = call_groq_llm(user_msg, context=full_policy_context, history=history)
             if policy_ans:
                 return policy_ans
-        if _model:
-            try:
-                chat = _model.start_chat()
-                p_prompt = f"{full_policy_context}\n\nCustomer: {user_msg}\nRespond as Clara concisely and factually using only the store and product data provided."
-                resp = chat.send_message(p_prompt)
-                if resp and resp.text:
-                    return resp.text.strip()
-            except Exception as e:
-                print(f"[Gemini Policy Call Error] {e}")
+        return policy_ctx or "You can return items within 15 to 30 days depending on the item category in original condition."
 
-        if order_ctx_str and "warranty" in msg_lower:
-            return f"Here is the official warranty and order information from our store data:\n\n{order_ctx_str}\n\n{policy_ctx}"
-        return policy_ctx
-
-    # 6. Conversation Context & Follow-Up Parsing from History
-    ongoing_categories = []
-    ongoing_label = ""
-    already_shown_models = set()
-    already_shown_brands = set()
-
-    if history:
-        for h in reversed(history):
-            content = (h.get("content") or "").strip()
-            content_lower = content.lower()
-
-            # Collect models and brands already shown to user in previous assistant turns
-            if h.get("role") in ["agent", "assistant"]:
-                for m in re.finditer(r'### \d+\.\s*([^\n]+)', content):
-                    line = m.group(1).strip()
-                    already_shown_models.add(line.lower())
-                    parts = line.split(" ", 1)
-                    if parts:
-                        already_shown_brands.add(parts[0].lower())
-                # Also extract from CART_BUTTON payloads
-                for cb in re.finditer(r'\[\[CART_BUTTON:(\{.*?\})\]\]', content):
-                    try:
-                        raw = cb.group(1).replace("&quot;", '"').replace("&amp;", '&')
-                        cdata = json.loads(raw)
-                        if cdata.get("brand"):
-                            already_shown_brands.add(cdata["brand"].strip().lower())
-                        if cdata.get("model"):
-                            already_shown_models.add(cdata["model"].strip().lower())
-                    except Exception:
-                        pass
-
-            # Detect ongoing category from prior turns
-            if not ongoing_categories:
-                if any(re.search(rf'\b{w}\b', content_lower) for w in [
-                    "watch", "watches", "smartwatch", "smartwatches", "fitness tracker", "fitness trackers",
-                    "apple watch", "galaxy watch", "garmin", "venu", "fitbit"
-                ]):
-                    ongoing_categories = ["Smartwatch", "Fitness Tracker"]
-                    ongoing_label = "smartwatches and fitness trackers"
-                elif any(w in content_lower for w in ["earpod", "earpods", "airpod", "airpods", "earbud", "earbuds", "earphone", "earphones", "buds", "tws"]):
-                    ongoing_categories = ["True Wireless Earbuds", "Wired Earphones"]
-                    ongoing_label = "earbuds and earphones"
-                elif any(w in content_lower for w in ["headphone", "headphones", "headset"]):
-                    ongoing_categories = ["Headphones", "Gaming Headset", "True Wireless Earbuds", "Wired Earphones"]
-                    ongoing_label = "headphones"
-                elif any(w in content_lower for w in ["laptop", "notebook", "macbook", "thinkpad"]):
-                    ongoing_categories = ["Laptop"]
-                    ongoing_label = "laptops"
-                elif any(re.search(rf'\b{p}\b', content_lower) for p in ["phone", "phones", "smartphone", "smartphones", "iphone", "pixel", "android"]):
-                    ongoing_categories = ["Phone"]
-                    ongoing_label = "smartphones"
-                elif "tablet" in content_lower or "ipad" in content_lower:
-                    ongoing_categories = ["Tablet"]
-                    ongoing_label = "tablets"
-                elif "monitor" in content_lower or "display" in content_lower:
-                    ongoing_categories = ["Monitor", "Portable Monitor"]
-                    ongoing_label = "monitors"
-                elif any(w in content_lower for w in ["gpu", "graphics card", "geforce", "rtx", "radeon"]):
-                    ongoing_categories = ["GPU / Graphics Card"]
-                    ongoing_label = "graphics cards"
-
-    wants_cheaper = any(k in msg_lower for k in [
-        "cheaper", "budget", "affordable", "less expensive", "lower price", "too expensive"
-    ])
-    wants_more = any(k in msg_lower for k in [
-        "more", "more options", "show more", "see more", "other choices", "any others", 
-        "some more", "what else", "another option", "more options", "give more"
-    ])
-    wants_other_brand = any(k in msg_lower for k in [
-        "other company", "another company", "different company", "other brand", "another brand", 
-        "different brand", "any other company", "any other brand", "other companies", "other brands",
-        "competitor", "alternative brand", "different companies"
-    ])
-
-    # Check if user query directly mentions a specific category
-    has_explicit_category = any(
-        any(re.search(rf'\b{w}\b', msg_lower) for w in cat_words)
-        for cat_words in [
-            ["watch", "watches", "smartwatch", "smartwatches", "fitness tracker"],
-            ["earpod", "earpods", "airpod", "airpods", "earbud", "earbuds", "earphone", "earphones", "buds", "tws"],
-            ["headphone", "headphones", "headset"],
-            ["laptop", "notebook", "macbook"],
-            ["phone", "smartphone", "iphone"],
-            ["tablet", "ipad"],
-            ["monitor", "display"],
-            ["gpu", "graphics card"]
-        ]
-    )
-
-    # 6A. Brand Follow-up ("any other company", "other brand", "different company")
-    if wants_other_brand and ongoing_categories and not has_explicit_category:
-        brand_prods = search_products_data(
-            query="",
-            target_categories_override=ongoing_categories,
-            exclude_brands=already_shown_brands,
-            exclude_models=already_shown_models,
-            limit=4
-        )
-        if brand_prods:
-            discovered_brands = sorted(list(set(p['Brand'] for p in brand_prods)))
-            brands_str = f" (featuring {', '.join(discovered_brands)})" if discovered_brands else ""
-            return format_product_recommendations(
-                brand_prods,
-                f"Certainly! Here are more **{ongoing_label}** options from other top companies in our catalog{brands_str}:"
-            )
-
-    # 6B. Cheaper Follow-up ("something cheaper", "budget options")
-    if wants_cheaper and ongoing_categories and not has_explicit_category:
-        cheaper_prods = search_products_data(
-            query="",
-            target_categories_override=ongoing_categories,
-            sort_by_price_asc=True,
-            exclude_models=already_shown_models,
-            limit=4
-        )
-        if cheaper_prods:
-            return format_product_recommendations(
-                cheaper_prods,
-                f"Of course! Here are more budget-friendly **{ongoing_label}** options from our catalog, sorted by price:"
-            )
-
-    # 6C. More Follow-up ("are there some more", "show more")
-    if wants_more and ongoing_categories and not has_explicit_category:
-        more_prods = search_products_data(
-            query="",
-            target_categories_override=ongoing_categories,
-            exclude_models=already_shown_models,
-            limit=4
-        )
-        if more_prods:
-            return format_product_recommendations(
-                more_prods,
-                f"Here are more excellent **{ongoing_label}** options from our live catalog:"
-            )
-
-    # 6D. Context-Aware Product Search & Query-Rewriting Step
-    # Use recent history to turn short follow-ups (e.g. 'tell me more about the Samsung one') into a standalone search query
-    retrieval_query = rewrite_query_with_history(user_msg, history)
-
-    sheets = get_live_sheets()
-    store_products = sheets.get("products", [])
-    known_brands = {str(p.get("Brand", "")).strip() for p in store_products if p.get("Brand")}
-
-    mentioned_brand = None
-    for b in known_brands:
-        if re.search(rf'\b{re.escape(b.lower())}\b', retrieval_query.lower()) or re.search(rf'\b{re.escape(b.lower())}\b', msg_lower):
-            mentioned_brand = b
-            break
-
-    # If the user is in an ongoing category (e.g. laptops) and did not specify a different category,
-    # keep the search strictly locked to the ongoing category!
-    active_cats = None
-    if ongoing_categories and not has_explicit_category:
-        active_cats = ongoing_categories
-
-    # Retrieve products from Google Sheets using the rewritten query
-    relevant_products = search_products_data(
-        retrieval_query,
-        target_categories_override=active_cats,
-        limit=4
-    )
-    if not relevant_products and retrieval_query != user_msg:
-        # Fallback to original user_msg if rewritten query yielded no matches
-        relevant_products = search_products_data(
-            user_msg,
-            target_categories_override=active_cats,
-            limit=4
-        )
-
-    # If the user specifically asked for a brand in an ongoing category (e.g. "samsung" during laptop chat),
-    # but that brand has no products in that specific category:
-    if mentioned_brand and active_cats and not relevant_products:
-        available_in_cat = sorted(list({
-            p.get("Brand", "").strip() for p in store_products
-            if any(c.lower() in p.get("Category", "").lower() for c in active_cats) and p.get("Brand")
-        }))
-        brands_msg = f" In our catalog, {ongoing_label} are available from: {', '.join(available_in_cat)}." if available_in_cat else ""
-        return f"We currently do not have any {mentioned_brand} {ongoing_label} in our catalog.{brands_msg}"
-
-    has_product_intent = (
-        relevant_products and (
-            has_explicit_category or bool(active_cats) or bool(mentioned_brand) or wants_more or any(k in msg_lower for k in [
-                "recommend", "product", "discount", "price", "buy", "find", "best", "durable", "durability",
-                "show", "suggestion", "suggest", "look", "looking", "have", "options", "give", "asked", "aksed",
-                "want", "need", "any", "which", "all", "tv", "speaker", "device"
-            ])
-        )
-    )
-    if has_product_intent and relevant_products:
-        intro = f"Here are the **{ongoing_label}** matching your request:" if active_cats and ongoing_label else "Here are the matching products from our live catalog:"
-        return format_product_recommendations(
-            relevant_products,
-            intro
-        )
-
-    # 7. Irrelevant Query Check
+    # ──────────────────────────────────────────────────────────────────────────
+    # ROUTE 7: OTHER (Greetings, Thanks, Off-Topic)
+    # ──────────────────────────────────────────────────────────────────────────
     if is_irrelevant_query(user_msg, history):
         return "I can only answer questions regarding TechMart's products, store policies, and order services based on our official store data."
 
-    # 8. Intelligent AI Response via Groq (with Gemini / Catalog fallback)
-    context_sections = []
-    # Retrieve matching policies using rewritten query
-    policy_ctx = query_policy(retrieval_query, n=2) or query_policy(user_msg, n=2)
-    if policy_ctx:
-        context_sections.append(f"POLICIES:\n{policy_ctx}")
-    if relevant_products:
-        context_sections.append(f"RELEVANT PRODUCTS:\n{json.dumps(relevant_products[:3], indent=1)}")
-    # Include last order + product warranty context for queries about ordered items
-    if order_ctx_str:
-        context_sections.append(order_ctx_str)
-    full_context_str = "\n\n".join(context_sections)
-
-    # Priority 1: Groq AI (Ultra-fast, high-quality responses strictly from provided data)
-    # Requirement 6: Keep original user message and full recent history for the final answer call
     if GROQ_API_KEY:
-        groq_resp = call_groq_llm(user_msg, context=full_context_str, history=history)
-        if groq_resp:
-            return groq_resp
+        other_resp = call_groq_llm(user_msg, context="", history=history)
+        if other_resp:
+            return other_resp
 
-    # Priority 2: Gemini AI Fallback
-    if _model:
-        prompt_sections = []
-        if full_context_str:
-            prompt_sections.append(full_context_str)
-        prompt_sections.append(f"Customer: {user_msg}\nRespond directly, factually, and concisely using only the store data.")
-        full_prompt = "\n\n".join(prompt_sections)
-
-        reply_container = [None]
-        def call_gemini():
-            try:
-                chat = _model.start_chat()
-                resp = chat.send_message(full_prompt)
-                reply_container[0] = resp.text.strip()
-            except Exception as e:
-                print(f"[Gemini Timeout/Error] {e}")
-
-        t = threading.Thread(target=call_gemini)
-        t.daemon = True
-        t.start()
-        t.join(timeout=5.0)
-
-        if reply_container[0]:
-            return reply_container[0]
-
-    # Instant intelligent concierge response — show all relevant_products (up to 4)
-    if relevant_products:
-        return format_product_recommendations(
-            relevant_products,
-            "Here are the matching products from our live catalog:"
-        )
-
-    return "I can assist with questions regarding TechMart's products, pricing, store policies, or existing orders. Please state your specific question."
+    return "Hello! I'm Clara, your TechMart shopping assistant. How can I help you today?"
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

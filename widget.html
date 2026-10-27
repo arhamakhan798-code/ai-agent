@@ -1556,7 +1556,7 @@ body.tm-light .chat-order-product-badge .badge-value {
         <span class="brand-logo-text">C</span>
       </div>
       <div class="brand-text">
-        <h1>Clara <span class="brand-badge">TechMart Concierge</span></h1>
+        <h1>Clara</h1>
         <p><span class="status-dot"></span> Online &amp; Ready to Help</p>
       </div>
     </div>
@@ -1671,7 +1671,7 @@ body.tm-light .chat-order-product-badge .badge-value {
       </button>
     </div>
     <div class="footer-disclaimer">
-      <span>✨ TechMart Concierge</span> · <span>Available 24/7 for customer support</span>
+      <span>TechMart</span> · <span>Available 24/7 for customer support</span>
     </div>
   </footer>
 
@@ -1713,7 +1713,7 @@ body.tm-light .chat-order-product-badge .badge-value {
         <div class="form-row-2col">
           <div class="form-group">
             <label class="form-label">Email Address (for passkey &amp; receipt)</label>
-            <input type="email" name="email" class="form-input" required placeholder="e.g. arhamakhan798@gmail.com" />
+            <input type="email" name="email" class="form-input" required placeholder="e.g. customer@example.com" />
           </div>
           <div class="form-group">
             <label class="form-label">Contact Phone Number</label>
@@ -2233,7 +2233,7 @@ async function handleCartCheckoutSubmit(e) {
   };
 
   btn.disabled = true;
-  btn.innerHTML = '<span class="btn-text">⏳ Syncing with Google Sheets &amp; Gmail...</span>';
+  btn.innerHTML = '<span class="btn-text">⏳ Processing Your Order...</span>';
   statusEl.style.display = 'none';
 
   try {
@@ -2253,7 +2253,7 @@ async function handleCartCheckoutSubmit(e) {
       <div class="order-confirmed-banner">
         <div class="order-confirmed-icon">🎉</div>
         <div class="order-confirmed-title">Order Placed Successfully!</div>
-        <div class="order-confirmed-subtitle">Your order has been recorded directly in Google Sheets and a confirmation receipt has been emailed to <strong>${escapeHtml(payload.email)}</strong>.</div>
+        <div class="order-confirmed-subtitle">Your order has been confirmed and a receipt has been emailed to <strong>${escapeHtml(payload.email)}</strong>.</div>
 
         <div class="order-details-grid">
           <div class="order-detail-item">
