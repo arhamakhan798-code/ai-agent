@@ -18,9 +18,11 @@ techmart-database-*.json
 client_secret*.json
 gmail_token.json
 
-# Local Vector Database & Scratch Cache
+# Local Vector Database & Databases
 chroma_db/
 scratch/
+*.db
+.pytest_cache/
 
 # IDE & OS files
 .vscode/

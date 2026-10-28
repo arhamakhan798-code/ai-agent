@@ -1,62 +1,119 @@
-# TechMart AI Shopping Assistant & Concierge (Clara)
+# TechMart AI Enterprise RAG Chatbot (Clara)
 
-An intelligent, full-stack e-commerce AI concierge and shopping assistant powered by **Groq LLMs**, **ChromaDB Semantic Vector Search**, live **Google Sheets** synchronization, and **Gmail API** order processing.
-
----
-
-## ✨ Features
-
-- **Clara AI Persona**: Friendly, accurate, and conversational sales concierge following strict source-of-truth guidelines.
-- **In-Memory Chat History**: Per-user session isolation with zero disk/database persistence and 30-minute idle TTL expiration.
-- **Query-Rewriting Retrieval**: Reformulates conversational follow-ups (e.g. *"tell me more about the Samsung one"*) into standalone queries before database lookup.
-- **Live Google Sheets Synchronization**: Real-time read and write access for product catalogs, customer orders, and refund requests.
-- **ChromaDB Semantic Policy RAG**: Natural language retrieval over return policies, warranties, and shipping rules.
-- **Automated Email Confirmations**: Sends itemized HTML order confirmations and secret tracking passkeys via Gmail API.
+A modular, production-ready RAG application combining:
+- **Relational Product Catalog**: PostgreSQL / SQLite for 1,000+ products with strict pricing & inventory integrity.
+- **ChromaDB Policy Retrieval**: Structure-aware semantic search over internal company policies (returns, warranties, shipping, customer service) with provenance citations.
+- **Dynamic Intent Routing**: Intelligent classification that answers follow-up product questions (discounts, specs, stock) directly without getting trapped in repetitive product cards.
+- **Multi-Format Document Ingestion**: Unified loading and chunking for `.txt`, `.md`, `.pdf` (with OCR detection), and `.docx` with SHA-256 deduplication.
 
 ---
 
-## 🚀 Quick Start (Local)
+## 🏗️ Architecture Overview
 
-### 1. Clone & Install Dependencies
+```
+├── app/
+│   ├── config.py                 # Central Pydantic BaseSettings
+│   ├── main.py                   # FastAPI application & lifespan management
+│   ├── core/
+│   │   └── database.py           # SQLAlchemy engine & session factory (PostgreSQL / SQLite)
+│   ├── models/
+│   │   ├── product.py            # Product model with calculated effective_price
+│   │   ├── sync_state.py         # Sync audit state & content hashing
+│   │   └── order.py              # Order & refund models with timestamps
+│   ├── repositories/
+│   │   └── product_repository.py # Fast relational querying, indexing, and batch upsert
+│   ├── schemas/
+│   │   ├── product.py            # Pydantic validation for products and filters
+│   │   └── sync.py               # Pydantic schemas for sync triggers & status
+│   ├── services/
+│   │   ├── document_loader.py    # Multi-format doc parser (.txt, .md, .pdf, .docx)
+│   │   ├── chunking.py           # Recursive structure-aware token chunker (tiktoken)
+│   │   ├── embeddings.py         # Pluggable embedding providers (ChromaDB MiniLM, OpenAI, Gemini)
+│   │   ├── chroma_service.py     # ChromaDB PersistentClient vector store wrapper
+│   │   ├── policy_ingestion.py   # Ingestion pipeline with file-hash deduplication
+│   │   ├── product_sync.py       # Google Sheets & CSV sync service
+│   │   ├── llm_service.py        # Groq (primary) + Gemini (fallback) client
+│   │   └── rag_engine.py         # Hybrid RAG router, prompt assembly, and cards logic
+│   └── api/
+│       └── v1/
+│           ├── chat.py           # Chat & RAG answer endpoints
+│           ├── products.py       # Product catalog REST endpoints
+│           ├── sync.py           # Catalog synchronization endpoints
+│           └── orders.py         # Order placement, lookup, and refund endpoints
+├── data/
+│   ├── policies/                 # Policy documents & metadata manifest
+│   └── sample_products.csv       # Fallback sample product catalog
+├── scripts/
+│   ├── ingest_policies.py        # CLI for batch/single policy ingestion
+│   ├── sync_products.py          # CLI for Google Sheets / CSV sync
+│   └── evaluate_retrieval.py     # Retrieval benchmark & evaluation metrics
+├── tests/
+│   ├── test_chunking.py          # Unit tests for chunking & document loaders
+│   ├── test_ingestion.py         # Integration tests for ChromaDB policy pipeline
+│   ├── test_products.py          # Unit tests for relational models & repository
+│   └── test_api.py               # End-to-end FastAPI API integration tests
+└── widget.html                   # Luxury interactive customer chat interface
+```
+
+---
+
+## 🚀 Quick Start
+
+### 1. Install Dependencies
 ```bash
-git clone https://github.com/arhamakhan798-code/ai-agent.git
-cd ai-agent
 pip install -r requirements.txt
 ```
 
-### 2. Configure Credentials
-Copy `.env.example` to `.env` or place your Google Cloud Service Account JSON and Gmail token in the project root:
-- `techmart-database-*.json`
-- `gmail_token.json`
-- Set `GROQ_API_KEY` and `GEMINI_API_KEY`
-
-### 3. Run the Backend
+### 2. Configure Environment (`.env`)
 ```bash
-python app.py
+cp .env.example .env
 ```
-Or double-click `start_agent.bat` on Windows.
+Ensure `GROQ_API_KEY` or `GEMINI_API_KEY` is set.
 
-### 4. Open the Web Widget
-Open `widget.html` in your browser to start chatting with Clara!
+### 3. Ingest Policy Documents
+```bash
+# Preview policy chunks
+python -m scripts.ingest_policies --preview --file data/policies/policy.txt
+
+# Ingest all policy documents in data/policies/
+python -m scripts.ingest_policies
+```
+
+### 4. Sync Products Catalog
+```bash
+# Sync from live Google Sheets (or fallback CSV)
+python -m scripts.sync_products --source csv
+
+# Check catalog sync status
+python -m scripts.sync_products --status
+```
+
+### 5. Run the Server
+```bash
+# Using uvicorn directly
+python -m uvicorn app.main:app --host 0.0.0.0 --port 5000 --reload
+
+# Or double-click start_agent.bat on Windows
+```
+
+- **Interactive API Docs (Swagger)**: http://localhost:5000/docs
+- **Client Web Widget**: Open `widget.html` in your browser or visit http://localhost:5000/
 
 ---
 
-## 🌐 Cloud Deployment (Render / Railway / Heroku)
+## 🧪 Running Automated Tests
 
-1. Connect your GitHub repository `arhamakhan798-code/ai-agent`.
-2. Set the build command:
-   ```bash
-   pip install -r requirements.txt
-   ```
-3. Set the start command:
-   ```bash
-   gunicorn app:app --bind 0.0.0.0:$PORT
-   ```
-4. Set the Environment Variables in your cloud dashboard:
-   - `GROQ_API_KEY`
-   - `GEMINI_API_KEY`
-   - `GOOGLE_SERVICE_ACCOUNT_JSON` (paste the content of your service account JSON file)
-   - `GMAIL_TOKEN_JSON` (paste the content of your `gmail_token.json` file)
+Run the complete 89-test verification suite:
+```bash
+pytest tests/ -v
+```
+
+All 89 unit and integration tests verify:
+- ✅ Structure-aware token chunking and stable SHA-256 IDs
+- ✅ ChromaDB policy vector storage and similarity search
+- ✅ Relational product queries, effective price discounts, and batch upsert
+- ✅ Google Sheets / CSV sync with content-hash change detection
+- ✅ Resolution of the "sticky product cards" bug: follow-up discount inquiries answer directly without repeating cards
 
 ---
 

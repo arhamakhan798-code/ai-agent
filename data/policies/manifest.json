@@ -1,0 +1,17 @@
+{
+  "policy.txt": {
+    "version": "v1.0",
+    "effective_date": "2024-01-01",
+    "access_scope": "public"
+  },
+  "return_policy.pdf": {
+    "version": "v2.1",
+    "effective_date": "2024-06-01",
+    "access_scope": "public"
+  },
+  "internal_operations.pdf": {
+    "version": "v1.3",
+    "effective_date": "2024-03-01",
+    "access_scope": "internal"
+  }
+}

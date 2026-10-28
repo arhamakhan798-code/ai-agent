@@ -1,0 +1,11 @@
+Name,SKU,Category,Brand,Price,Discount,Stock,Description
+Sony PlayStation 5 Slim,SKU-001,Gaming,Sony,449.99,15,24,"Next-gen gaming console with ultra-fast SSD and ray tracing"
+Apple MacBook Air M3,SKU-002,Laptops,Apple,1099.99,0,12,"13.6-inch laptop with M3 chip, 8GB RAM, 256GB SSD"
+Samsung 65-inch OLED TV,SKU-003,TVs,Samsung,1299.00,10,8,"65-inch 4K OLED TV with AI upscaling and 120Hz refresh rate"
+Sony WH-1000XM5 Headphones,SKU-004,Audio,Sony,349.99,20,35,"Industry-leading noise cancelling wireless headphones"
+Apple iPhone 15 Pro,SKU-005,Phones,Apple,999.99,0,50,"6.1-inch titanium design with A17 Pro chip"
+Dell XPS 15 Laptop,SKU-006,Laptops,Dell,1399.99,5,7,"15.6-inch OLED laptop with Intel Core i7, 16GB RAM, 512GB SSD"
+LG 27-inch 4K Monitor,SKU-007,Monitors,LG,449.99,12,18,"27-inch 4K IPS monitor with USB-C and HDR600"
+Bose QuietComfort 45,SKU-008,Audio,Bose,279.99,15,42,"Wireless noise-cancelling headphones with 24-hour battery"
+Samsung Galaxy S24 Ultra,SKU-009,Phones,Samsung,1199.99,8,30,"6.8-inch flagship phone with 200MP camera and S-Pen"
+Logitech MX Master 3S,SKU-010,Accessories,Logitech,99.99,0,100,"Ergonomic wireless mouse with MagSpeed scroll wheel"
