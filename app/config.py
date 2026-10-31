@@ -19,12 +19,18 @@ class Settings(BaseSettings):
     ADMIN_API_KEY: str = "change_this_in_production"
 
     # ── Database ──────────────────────────────────────────────────────────────
+    # On Railway: set DATABASE_URL to postgres:// connection string (recommended)
+    # or leave blank to use SQLite on the mounted volume at RAILWAY_VOLUME_MOUNT_PATH
     DATABASE_URL: str = "sqlite:///./data/techmart_local.db"
     DB_POOL_SIZE: int = 10
     DB_MAX_OVERFLOW: int = 20
     # SQLite fallback for local dev without Postgres
     SQLITE_FALLBACK: bool = True
     SQLITE_DB_PATH: str = "./data/techmart_local.db"
+
+    # Railway persistent volume mount path (set automatically by Railway when a volume is attached)
+    # When set, SQLite and ChromaDB paths are relocated under this directory.
+    RAILWAY_VOLUME_MOUNT_PATH: str = ""
 
     # ── ChromaDB ──────────────────────────────────────────────────────────────
     CHROMA_PERSIST_DIRECTORY: str = "./chroma_db"

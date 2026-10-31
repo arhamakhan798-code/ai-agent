@@ -73,6 +73,25 @@ async def _sheets_sync_loop():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # ── Railway volume path adjustment ────────────────────────────────────────
+    # When RAILWAY_VOLUME_MOUNT_PATH is set (Railway attaches a persistent volume),
+    # relocate SQLite and ChromaDB into that directory so data survives redeploys.
+    volume_root = settings.RAILWAY_VOLUME_MOUNT_PATH.strip()
+    if volume_root:
+        volume_path = Path(volume_root)
+        (volume_path / "data").mkdir(parents=True, exist_ok=True)
+        (volume_path / "chroma_db").mkdir(parents=True, exist_ok=True)
+        (volume_path / "data" / "policies").mkdir(parents=True, exist_ok=True)
+        # Override runtime paths on the singleton settings object
+        settings.SQLITE_DB_PATH = str(volume_path / "data" / "techmart_local.db")
+        settings.DATABASE_URL = f"sqlite:///{settings.SQLITE_DB_PATH}"
+        settings.CHROMA_PERSIST_DIRECTORY = str(volume_path / "chroma_db")
+        logger.info("Railway volume detected. Paths relocated under: %s", volume_root)
+    else:
+        # Ensure local data dirs exist (first run / Docker)
+        Path("./data").mkdir(parents=True, exist_ok=True)
+        Path("./chroma_db").mkdir(parents=True, exist_ok=True)
+
     # Startup: Initialize Database & Vector Store
     logger.info("Initializing relational database tables...")
     init_db()

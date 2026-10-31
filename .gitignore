@@ -1,3 +1,7 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# .gitignore — TechMart Enterprise RAG Agent
+# ─────────────────────────────────────────────────────────────────────────────
+
 # Python artifacts
 __pycache__/
 *.py[cod]
@@ -17,11 +21,19 @@ ENV/
 techmart-database-*.json
 client_secret*.json
 gmail_token.json
+pip_freeze.txt
+service_account_oneliner.txt
 
-# Local Vector Database & Databases
-chroma_db/
-scratch/
+# Local databases (Railway uses a volume; never commit DB files)
 *.db
+*.sqlite
+*.sqlite3
+
+# Local Vector Database
+chroma_db/
+
+# Scratch / temp
+scratch/
 .pytest_cache/
 
 # IDE & OS files
