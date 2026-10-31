@@ -34,15 +34,13 @@ from google.oauth2.credentials import Credentials as OAuthCredentials
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 import google.generativeai as genai
-import chromadb
-from chromadb.utils import embedding_functions
+# chromadb removed — replaced with lightweight in-memory policy store (see Section 1 below)
 
 # ── CONFIGURATION ─────────────────────────────────────────────────────────────
 BASE_DIR         = os.path.dirname(os.path.abspath(__file__))
 SA_CREDS_FILE    = os.path.join(BASE_DIR, "techmart-database-a6718d22604c.json")
 GMAIL_TOKEN_FILE = os.path.join(BASE_DIR, "gmail_token.json")
 POLICY_FILE      = os.path.join(BASE_DIR, "policy.txt")
-CHROMA_PATH      = os.environ.get("CHROMA_PATH", os.path.join("/tmp" if os.environ.get("VERCEL") else BASE_DIR, "chroma_db"))
 SPREADSHEET_ID   = os.environ.get("SPREADSHEET_ID", "15wQuB7ZcJBuEfODW82JyXDz9tM1XhB33DXl-nKDi2Z4")
 SENDER_EMAIL     = os.environ.get("SENDER_EMAIL", "arhamakhan798@gmail.com")
 
@@ -69,6 +67,25 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 # ── FLASK SETUP ───────────────────────────────────────────────────────────────
 app = Flask(__name__)
 CORS(app, origins="*")
+
+# ── MODULE-LEVEL INITIALIZATION (runs on Vercel cold start & local dev) ───────
+# We use a flag so repeated imports don't re-initialize.
+_initialized = False
+
+def _ensure_initialized():
+    """Lazy one-time initialization — safe to call from any route."""
+    global _initialized
+    if _initialized:
+        return
+    _initialized = True
+    _init_gemini()
+    _init_policy_store()
+
+# Eagerly init so the first request isn't slow
+try:
+    _ensure_initialized()
+except Exception as _init_err:
+    print(f"[Init] Startup warning (will retry on first request): {_init_err}")
 
 # ── SECURITY: RATE-LIMITER FOR PASSKEY ATTEMPTS ──────────────────────────────
 # Tracks failed passkey attempts per (IP, order_number) to prevent brute-force.
@@ -124,50 +141,26 @@ def clean_llm_text(text: str) -> str:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-#  1. CHROMADB — POLICY VECTOR STORE (Semantic RAG)
+#  1. POLICY STORE — Lightweight In-Memory Keyword Search (No ChromaDB)
+#     Replaces ChromaDB to keep the bundle under Vercel's 500 MB limit.
+#     Policy.txt is split into sections and searched by keyword overlap scoring.
 # ═══════════════════════════════════════════════════════════════════════════════
 
-_chroma_client     = None
-_policy_collection = None
+_policy_sections: list[dict] = []   # [{"section": str, "text": str}]
+_policy_chunk_count: int = 0
 
-def _init_chromadb():
-    """Initializes ChromaDB collection and indexes policy.txt."""
-    global _chroma_client, _policy_collection
-    os.makedirs(CHROMA_PATH, exist_ok=True)
-    _chroma_client = chromadb.PersistentClient(path=CHROMA_PATH)
-
-    if GEMINI_API_KEY:
-        try:
-            emb_fn = embedding_functions.GoogleGenerativeAiEmbeddingFunction(
-                api_key=GEMINI_API_KEY,
-                model_name="models/embedding-001"
-            )
-            print("[ChromaDB] Using GoogleGenerativeAiEmbeddingFunction")
-        except Exception:
-            emb_fn = embedding_functions.DefaultEmbeddingFunction()
-            print("[ChromaDB] Using DefaultEmbeddingFunction")
-    else:
-        emb_fn = embedding_functions.DefaultEmbeddingFunction()
-        print("[ChromaDB] Using DefaultEmbeddingFunction")
-
-    _policy_collection = _chroma_client.get_or_create_collection(
-        name="techmart_policy",
-        embedding_function=emb_fn,
-        metadata={"hnsw:space": "cosine"},
-    )
-
-    if _policy_collection.count() > 0:
-        print(f"[ChromaDB] Policy already indexed ({_policy_collection.count()} sections).")
-        return
+def _init_policy_store() -> None:
+    """Load and section-split policy.txt into the in-memory store."""
+    global _policy_sections, _policy_chunk_count
+    _policy_sections = []
 
     if not os.path.exists(POLICY_FILE):
-        print(f"[ChromaDB] WARNING: {POLICY_FILE} not found.")
+        print(f"[Policy] WARNING: {POLICY_FILE} not found — policy queries will return empty.")
         return
 
     with open(POLICY_FILE, "r", encoding="utf-8") as f:
         raw = f.read()
 
-    chunks, ids, metas = [], [], []
     current_id   = "policy"
     current_text = []
 
@@ -177,9 +170,7 @@ def _init_chromadb():
             if current_text:
                 body = "\n".join(current_text).strip()
                 if body:
-                    chunks.append(body)
-                    ids.append(f"{current_id}_{len(chunks)}")
-                    metas.append({"section": current_id})
+                    _policy_sections.append({"section": current_id, "text": body})
             current_id   = stripped.lower().replace(" ", "_")
             current_text = [line]
         else:
@@ -188,40 +179,62 @@ def _init_chromadb():
     if current_text:
         body = "\n".join(current_text).strip()
         if body:
-            chunks.append(body)
-            ids.append(f"{current_id}_{len(chunks)}")
-            metas.append({"section": current_id})
+            _policy_sections.append({"section": current_id, "text": body})
 
-    if chunks:
-        _policy_collection.add(documents=chunks, ids=ids, metadatas=metas)
-        print(f"[ChromaDB] Indexed {len(chunks)} policy sections.")
+    _policy_chunk_count = len(_policy_sections)
+    print(f"[Policy] Loaded {_policy_chunk_count} sections from policy.txt (in-memory, no ChromaDB).")
+
+
+def _score_section(section_text: str, query_tokens: list[str]) -> int:
+    """Count how many unique query tokens appear in section_text (case-insensitive)."""
+    text_lower = section_text.lower()
+    return sum(1 for tok in query_tokens if tok in text_lower)
+
 
 def query_policy(query: str, n: int = 2) -> str:
-    """Retrieve top matching policy chunks from ChromaDB."""
-    if not _policy_collection or _policy_collection.count() == 0:
+    """
+    Keyword-based retrieval over in-memory policy sections.
+    Falls back to full policy text if no sections are loaded.
+    """
+    if not _policy_sections:
         if os.path.exists(POLICY_FILE):
             with open(POLICY_FILE, "r", encoding="utf-8") as f:
                 return f.read()
         return ""
-    try:
-        count = _policy_collection.count()
-        results = _policy_collection.query(
-            query_texts=[query],
-            n_results=min(n, count)
-        )
-        docs = results.get("documents", [[]])[0]
-        return "\n\n---\n\n".join(docs)
-    except Exception as e:
-        print(f"[ChromaDB] Query error: {e}")
-        return ""
 
-def reload_policy():
-    global _policy_collection
-    if _policy_collection:
-        existing = _policy_collection.get()
-        if existing and existing.get("ids"):
-            _policy_collection.delete(ids=existing["ids"])
-    _init_chromadb()
+    # Tokenise query (lowercase words ≥ 3 chars, excluding stopwords)
+    _STOPWORDS = {"the", "and", "for", "with", "that", "this", "what", "how",
+                  "can", "you", "your", "our", "does", "when", "about", "any"}
+    tokens = [w for w in re.findall(r"[a-z]{3,}", query.lower()) if w not in _STOPWORDS]
+
+    if not tokens:
+        # No meaningful tokens — return the first section(s)
+        return "\n\n---\n\n".join(s["text"] for s in _policy_sections[:n])
+
+    scored = [(s, _score_section(s["text"], tokens)) for s in _policy_sections]
+    scored.sort(key=lambda x: x[1], reverse=True)
+
+    # Take top n sections that have at least 1 matching token
+    top = [s["text"] for s, score in scored[:n] if score > 0]
+    if not top:
+        # Fallback: return first section
+        top = [_policy_sections[0]["text"]]
+
+    return "\n\n---\n\n".join(top)
+
+
+def reload_policy() -> None:
+    """Reload policy.txt into the in-memory store (e.g., after admin update)."""
+    _init_policy_store()
+
+
+# ── Shim so health route still works (replaces _policy_collection.count()) ────
+class _PolicyCollectionShim:
+    def count(self) -> int:
+        return _policy_chunk_count
+
+_policy_collection = _PolicyCollectionShim()
+
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -2271,8 +2284,8 @@ if __name__ == "__main__":
     print("\n[1/3] Initializing Gemini AI...")
     _init_gemini()
 
-    print("[2/3] Initializing ChromaDB Vector Store...")
-    _init_chromadb()
+    print("[2/3] Loading Policy Store (in-memory keyword search)...")
+    _init_policy_store()
 
     print("[3/3] Synchronizing live Google Sheets...")
     initial_data = get_live_sheets()
@@ -2281,9 +2294,8 @@ if __name__ == "__main__":
   Status Summary:
   -------------------------------------------------------------
   Server       : http://localhost:5000
-  Groq AI      : {"Enabled (qwen/qwen3.8-27b)" if GROQ_API_KEY else "Disabled"}
-  Gemini AI    : {"Enabled (gemini-1.5-flash)" if _model else "Disabled"}
-  ChromaDB     : {_policy_collection.count() if _policy_collection else 0} policy chunks indexed
+  Gemini AI    : {"Enabled" if _model else "Disabled"}
+  Policy Store : {_policy_collection.count()} sections indexed (in-memory)
   Sheets Mode  : Real-Time Sync (Live fetch & instant append)
   Products     : {len(initial_data.get("products", []))} live products loaded
   Orders Sheet : {len(initial_data.get("orders", []))} recorded orders
