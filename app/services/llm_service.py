@@ -23,16 +23,17 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-_TAG_RE = re.compile(r"\[\[.*?\]\]", re.S)
 _THINK_RE = re.compile(r"<think>.*?</think>", re.S | re.I)
+# Preserve functional UI tags: CART_BUTTON and ORDER_FORM
+_DISALLOWED_TAG_RE = re.compile(r"\[\[(?!CART_BUTTON|ORDER_FORM)[A-Z_]+:.*?\]\]", re.S)
 
 
 def clean_llm_text(text: str) -> str:
-    """Strip reasoning trace blocks and internal tags."""
+    """Strip internal reasoning blocks and unauthorized tags, while preserving UI interactive action tags."""
     if not text:
         return ""
     cleaned = _THINK_RE.sub("", text)
-    cleaned = _TAG_RE.sub("", cleaned)
+    cleaned = _DISALLOWED_TAG_RE.sub("", cleaned)
     return cleaned.strip()
 
 
@@ -50,12 +51,22 @@ class LLMService:
         user_message: str,
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
+        history: Optional[List[Dict[str, str]]] = None,
     ) -> str:
         """Generate response with primary provider and automatic fallback."""
         temp = temperature if temperature is not None else self.temperature
         tokens = max_tokens if max_tokens is not None else self.max_tokens
 
-        # Attempt Groq first if key is present
+        # If primary provider is Gemini
+        if settings.LLM_PROVIDER == "gemini" and self.gemini_api_key:
+            try:
+                resp = self._call_gemini(system_prompt, user_message, temp, tokens, history)
+                if resp:
+                    return clean_llm_text(resp)
+            except Exception as exc:
+                logger.warning("Gemini call failed (%s). Attempting Groq fallback.", exc)
+
+        # Attempt Groq
         if self.groq_api_key:
             try:
                 resp = self._call_groq(system_prompt, user_message, temp, tokens)
@@ -64,10 +75,10 @@ class LLMService:
             except Exception as exc:
                 logger.warning("Groq call failed (%s). Attempting Gemini fallback.", exc)
 
-        # Fallback to Gemini
-        if self.gemini_api_key:
+        # Fallback to Gemini if not already attempted
+        if settings.LLM_PROVIDER != "gemini" and self.gemini_api_key:
             try:
-                resp = self._call_gemini(system_prompt, user_message, temp, tokens)
+                resp = self._call_gemini(system_prompt, user_message, temp, tokens, history)
                 if resp:
                     return clean_llm_text(resp)
             except Exception as exc:
@@ -116,15 +127,30 @@ class LLMService:
         user_message: str,
         temperature: float,
         max_tokens: int,
+        history: Optional[List[Dict[str, str]]] = None,
     ) -> str:
         url = (
             f"https://generativelanguage.googleapis.com/v1beta/models/"
-            f"gemini-1.5-flash:generateContent?key={self.gemini_api_key}"
+            f"gemini-3.5-flash-lite:generateContent?key={self.gemini_api_key}"
         )
         headers = {"Content-Type": "application/json"}
-        prompt_combined = f"{system_prompt}\n\nUser Question: {user_message}"
+
+        # Build multi-turn contents array for proper conversation context
+        contents = []
+
+        # Inject prior turns so Gemini has full conversation memory
+        for turn in (history or []):
+            g_role = "user" if turn.get("role") == "user" else "model"
+            content_text = turn.get("content", "")
+            if content_text:
+                contents.append({"role": g_role, "parts": [{"text": content_text}]})
+
+        # Final user turn includes the system prompt + current question
+        final_user_text = f"{system_prompt}\n\nUser Question: {user_message}"
+        contents.append({"role": "user", "parts": [{"text": final_user_text}]})
+
         payload = {
-            "contents": [{"parts": [{"text": prompt_combined}]}],
+            "contents": contents,
             "generationConfig": {
                 "temperature": temperature,
                 "maxOutputTokens": max_tokens,

@@ -12,6 +12,7 @@ Features:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -27,7 +28,7 @@ from app.core.database import init_db, get_db
 from app.services.chroma_service import init_chroma
 from app.services.policy_ingestion import ingest_directory
 from app.services.product_sync import ProductSyncService
-from app.api.v1.chat import router as chat_router, handle_chat, ChatRequest
+from app.api.v1.chat import router as chat_router, handle_chat, ChatRequest, ChatMessage
 from app.api.v1.products import router as products_router
 from app.api.v1.sync import router as sync_router
 from app.api.v1.orders import router as orders_router
@@ -37,6 +38,37 @@ logging.basicConfig(
     format="%(asctime)s  %(levelname)-8s  %(name)s - %(message)s",
 )
 logger = logging.getLogger("app.main")
+
+
+async def _sheets_sync_loop():
+    """
+    Background task: polls Google Sheets every SYNC_POLL_INTERVAL_SECONDS seconds.
+    Uses content-hash comparison inside ProductSyncService — only writes to DB
+    when the sheet actually changed, so this is cheap on idle.
+    """
+    interval = max(settings.SYNC_POLL_INTERVAL_SECONDS, 10)  # minimum 10s
+    logger.info(
+        "Google Sheets real-time sync started — polling every %ds for changes.", interval
+    )
+    while True:
+        await asyncio.sleep(interval)
+        try:
+            from app.core.database import get_db_context
+            with get_db_context() as db:
+                svc = ProductSyncService(db)
+                result = svc.sync(source="google_sheets")
+                if result.get("status") == "success":
+                    logger.info(
+                        "Sheets sync: %d products upserted (hash %s…)",
+                        result.get("rows_synced", 0),
+                        str(result.get("content_hash", ""))[:8],
+                    )
+                elif result.get("status") == "skipped":
+                    logger.debug("Sheets sync: no changes detected.")
+                else:
+                    logger.warning("Sheets sync returned: %s", result)
+        except Exception as exc:
+            logger.warning("Sheets sync poll failed (will retry): %s", exc)
 
 
 @asynccontextmanager
@@ -57,19 +89,42 @@ async def lifespan(app: FastAPI):
         except Exception as exc:
             logger.warning("Initial policy ingestion notice: %s", exc)
 
-    # Initial product catalog sync from CSV fallback if empty
+    # Initial product catalog sync — try Google Sheets first, fall back to CSV
     from app.core.database import get_db_context
     with get_db_context() as db:
-        from app.repositories.product_repository import ProductRepository
-        repo = ProductRepository(db)
-        if repo.count() == 0 and os.path.exists(settings.LOCAL_CSV_BACKUP_PATH):
-            logger.info("Product catalog empty. Seeding from local backup...")
-            sync_svc = ProductSyncService(db)
-            sync_svc.sync(source="csv")
+        svc = ProductSyncService(db)
+        try:
+            logger.info("Initial sync: fetching product catalog from Google Sheets...")
+            result = svc.sync(source="google_sheets")
+            if result.get("status") in ("success", "skipped"):
+                logger.info(
+                    "Google Sheets initial sync OK — %d products in catalog.",
+                    result.get("rows_synced", 0),
+                )
+            else:
+                raise RuntimeError(result.get("error", "unknown"))
+        except Exception as exc:
+            logger.warning(
+                "Google Sheets sync failed on startup (%s). Falling back to CSV.", exc
+            )
+            from app.repositories.product_repository import ProductRepository
+            repo = ProductRepository(db)
+            if repo.count() == 0 and os.path.exists(settings.LOCAL_CSV_BACKUP_PATH):
+                logger.info("Product catalog empty. Seeding from local CSV backup...")
+                svc.sync(source="csv")
+
+    # Launch real-time Google Sheets background polling loop
+    sync_task = asyncio.create_task(_sheets_sync_loop())
+    logger.info("Real-time Google Sheets sync background task started.")
 
     yield
 
-    # Shutdown
+    # Shutdown — cancel the polling loop cleanly
+    sync_task.cancel()
+    try:
+        await sync_task
+    except asyncio.CancelledError:
+        pass
     logger.info("Shutting down application...")
 
 
@@ -107,10 +162,23 @@ async def legacy_chat(req: Request, db: Session = Depends(get_db)):
     """Handles requests from widget.html sending {message: '...' or message: ''}."""
     body = await req.json()
     msg = body.get("message") or body.get("user_message") or ""
-    history_raw = body.get("conversation_history") or []
+    # Accept both field names — widget.html sends "history", v1 API sends "conversation_history"
+    history_raw = body.get("conversation_history") or body.get("history") or []
+
+    def _normalize_role(role: str) -> str:
+        """widget.html uses 'agent' for bot — normalize to 'assistant'."""
+        if role in ("agent", "bot", "clara", "assistant", "model"):
+            return "assistant"
+        return "user"
+
+    parsed_history = [
+        ChatMessage(role=_normalize_role(h.get("role", "user")), content=h.get("content", ""))
+        for h in history_raw
+        if h.get("content")
+    ]
     chat_req = ChatRequest(
         message=msg,
-        conversation_history=[],
+        conversation_history=parsed_history,
         session_id=body.get("session_id", ""),
     )
     res = handle_chat(chat_req, db=db)
@@ -127,12 +195,25 @@ async def legacy_chat(req: Request, db: Session = Depends(get_db)):
 
 
 @app.get("/health")
-def health_check():
+@app.get("/api/health")
+def health_check(db: Session = Depends(get_db)):
     from app.services.chroma_service import get_status as chroma_status
+    from app.models.product import Product
+    from app.models.order import Order
+    try:
+        prod_count = db.query(Product).count()
+    except Exception:
+        prod_count = 0
+    try:
+        order_count = db.query(Order).count()
+    except Exception:
+        order_count = 0
     return {
         "status": "healthy",
         "app": settings.PROJECT_NAME,
         "chroma": chroma_status(),
+        "products": prod_count,
+        "orders": order_count,
     }
 
 

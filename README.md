@@ -108,12 +108,29 @@ Run the complete 89-test verification suite:
 pytest tests/ -v
 ```
 
-All 89 unit and integration tests verify:
+All unit and integration tests verify:
 - ✅ Structure-aware token chunking and stable SHA-256 IDs
 - ✅ ChromaDB policy vector storage and similarity search
 - ✅ Relational product queries, effective price discounts, and batch upsert
 - ✅ Google Sheets / CSV sync with content-hash change detection
 - ✅ Resolution of the "sticky product cards" bug: follow-up discount inquiries answer directly without repeating cards
+- ✅ Order placement, passkey verification, and conversational tracking
+- ✅ Policy-based refund validation (15-day limit for electronics vs. 30-day standard)
+- ✅ Gmail OAuth2 notification pipeline with rich HTML receipts
+
+---
+
+## 🔐 Google Cloud & Gmail OAuth2 Setup
+
+1. **Service Account Credentials** (`techmart-database-a6718d22604c.json`):
+   - Used for Google Sheets read/write sync (Order Details & Refund Details worksheets).
+2. **Gmail OAuth2 Credentials** (`client_secret.json`):
+   - Desktop Client (`installed`) configuration used for sending confirmation emails.
+   - Run the one-time authorization script:
+     ```bash
+     python authorize_gmail.py
+     ```
+   - Automatically stores the authenticated refresh token in `gmail_token.json`.
 
 ---
 

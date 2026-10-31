@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 import re
 from typing import Optional, List
-from sqlalchemy import or_, and_, func
+from sqlalchemy import or_, and_, func, case
 from sqlalchemy.orm import Session
 
 from app.models.product import Product
@@ -91,8 +91,26 @@ class ProductRepository:
             search_terms = meaningful_terms if meaningful_terms else raw_terms
 
             if search_terms:
+                # Add singular/plural variants for common queries (e.g., phones -> phone, laptops -> laptop, mice -> mouse)
+                expanded_terms = set(search_terms)
+                irregular_plurals = {
+                    "mice": "mouse",
+                    "mouse": "mice",
+                }
+                for t in list(search_terms):
+                    if t in irregular_plurals:
+                        expanded_terms.add(irregular_plurals[t])
+                    elif t.endswith("ies") and len(t) > 4:
+                        expanded_terms.add(t[:-3] + "y")
+                    elif t.endswith("es") and len(t) > 3:
+                        expanded_terms.add(t[:-2])
+                    elif t.endswith("s") and len(t) > 2:
+                        expanded_terms.add(t[:-1])
+
+                search_terms = list(expanded_terms)
+
                 or_clauses = []
-                for term in search_terms:
+                for term in expanded_terms:
                     pattern = f"%{term}%"
                     or_clauses.extend([
                         Product.name.ilike(pattern),
@@ -118,7 +136,26 @@ class ProductRepository:
         if in_stock_only:
             stmt = stmt.filter(Product.stock > 0)
 
-        return stmt.order_by(Product.name.asc()).offset(offset).limit(limit).all()
+        # Prioritize matches where category or name contains the term, over description matches
+        order_clauses = []
+        if query and search_terms:
+            conditions = []
+            for t in search_terms:
+                conditions.append((func.lower(Product.category) == t, 1))
+                conditions.append((Product.category.ilike(f"{t}%"), 2))
+                conditions.append((Product.category.ilike(f"%{t}%"), 3))
+                conditions.append((func.lower(Product.name) == t, 4))
+                conditions.append((Product.name.ilike(f"{t}%"), 5))
+                conditions.append((Product.name.ilike(f"%{t}%"), 6))
+            order_clauses.append(case(*conditions, else_=7))
+        order_clauses.append(Product.name.asc())
+
+        return (
+            stmt.order_by(*order_clauses)
+            .offset(offset)
+            .limit(limit)
+            .all()
+        )
 
     def upsert_batch(self, items: List[dict]) -> int:
         """

@@ -39,8 +39,8 @@ class Settings(BaseSettings):
 
     # ── LLM Provider ──────────────────────────────────────────────────────────
     # Supported: "groq" | "openai" | "gemini"
-    LLM_PROVIDER: str = "groq"
-    LLM_MODEL: str = "llama-3.3-70b-versatile"
+    LLM_PROVIDER: str = "gemini"
+    LLM_MODEL: str = "gemini-3.5-flash-lite"
     GROQ_API_KEY: str = ""
     LLM_TEMPERATURE: float = 0.0
     LLM_MAX_TOKENS: int = 2048
@@ -65,7 +65,7 @@ class Settings(BaseSettings):
     POLICY_SCORE_THRESHOLD: float = 0.35
 
     # ── Product retrieval ─────────────────────────────────────────────────────
-    PRODUCT_TOP_K: int = 5
+    PRODUCT_TOP_K: int = 10
 
     # ── Rate limiting ─────────────────────────────────────────────────────────
     RATE_LIMIT_REQUESTS_PER_MINUTE: int = 60

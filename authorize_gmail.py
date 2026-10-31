@@ -64,9 +64,20 @@ try:
         access_type="offline"
     )
 except Exception as e:
-    print(f"\n[ERROR] Failed to start local server on port 8080: {e}")
-    print("If port 8080 is blocked, make sure no other program is using it.")
-    sys.exit(1)
+    print(f"\nPort 8080 unavailable ({e}), falling back to available port...")
+    try:
+        creds = flow.run_local_server(
+            host="localhost",
+            port=0,
+            authorization_prompt_message="Open this URL in your browser to authorize:\n{url}\n",
+            success_message="Authentication complete! You can close this window now.",
+            open_browser=True,
+            prompt="consent",
+            access_type="offline"
+        )
+    except Exception as e2:
+        print(f"\n[ERROR] Failed to start local server: {e2}")
+        sys.exit(1)
 
 token_data = {
     "token": creds.token,
